@@ -7,6 +7,11 @@ data loading, diagnostics—that are fully and totally optimized for state-of-th
 
 This means: no fallbacks, no hacks, no shortcuts. Production-grade, Google-quality code that at all times demonstrates a maniacal obsession with elegant minimalism.
 
+## Public Repo Contract
+
+- No internal-only paths, hostnames, IPs, or runbooks in tracked files.
+- The supported execution path is container-first (`docker/` + TOML configs).
+- Keep surfaces small: no second stacks for the same use-case.
 
 Our ethos: do one thing, exceedingly well — state‑of‑the‑art MoE training on B200 with RDEP — and nothing else. Elegant minimalism isn’t just fewer lines; it’s disciplined intent plus impeccable execution.
 

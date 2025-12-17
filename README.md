@@ -1,58 +1,177 @@
-NMoE
-====
+# NMoE
 
-NMoE is an opinionated Mixture-of-Experts training library hard-targeted to
-NVIDIA Blackwell B200 (`sm_100a`) with RDEP expert parallelism.
+```
+   _ __   _ __ ___   ___   ___
+  | '_ \ | '_ ` _ \ / _ \ / _ \
+  | | | || | | | | | (_) |  __/
+  |_| |_||_| |_| |_|\___/ \___|
+```
 
-This repository is **container-first**: the supported way to build and run is
-via the Dockerfiles in `docker/`.
+> No all-to-all. No tensor parallel. B200-only.
 
-What this repo is not:
-- Not a general-purpose distributed training stack.
-- Not a tensor-parallel framework.
-- Not a "works everywhere" codebase (off-target GPUs are intentionally rejected).
+MoE training on NVIDIA B200 using RDEP—direct GPU-to-GPU NVSHMEM puts instead of
+NCCL collectives. One fused kernel per direction. Zero collective synchronization
+on the expert path.
 
-Quickstart (Docker)
--------------------
+## Prerequisites
 
-Build the base image:
+- NVIDIA B200 GPU(s) (`sm_100a`)
+- CUDA 12.8+ / PyTorch nightly (cu128)
+- NVSHMEM 3.5+ (for multi-node RDEP)
 
-    docker build -f docker/Dockerfile.base -t nmoe:base .
+## Quick Start (Docker)
 
-Build the single-node training image:
+This repository is **container-first**. Build and run via the Dockerfiles in `docker/`.
 
-    docker build -f docker/Dockerfile.train --build-arg BASE_IMAGE=nmoe:base -t nmoe:train .
+```bash
+# Build base image
+docker build -f docker/Dockerfile.base -t xjdr/nmoe:base .
 
-Build the multi-node (patched NVSHMEM) image:
+# Build training image
+docker build -f docker/Dockerfile.train -t xjdr/nmoe_train:latest .
 
-    docker build -f docker/Dockerfile.dist --build-arg BASE_IMAGE=nmoe:base -t nmoe:dist .
-
-Run training (example):
-
+# Run single-GPU training
+docker run --gpus all -v /data:/data xjdr/nmoe_train:latest \
     python -m nmoe.train configs/moonlet.toml
+```
 
-Data inputs
------------
+For multi-node with NVSHMEM:
 
-Training consumes token shards (`.npy`) and supports two distinct workflows:
+```bash
+docker build -f docker/Dockerfile.dist -t xjdr/nmoe_dist:latest .
+```
 
-- **Direct shards (research / small runs)**: set `data_path` to a directory containing `.npy` shards (no flow TOMLs).
-- **Flows (production / large runs)**: set `flow_mode`, `mixture_toml`, and `flow_profiles_toml` for deterministic dataset mixing and exact resume.
+## Configs
 
-Dataset cleaning / augmentation (HYDRA grading, K2 rephrasing) is a separate preprocessing pipeline and may run on non‑B200 hardware; training itself hard-targets B200.
+| Config | Model | Experts | GPUs | Use Case |
+|--------|-------|---------|------|----------|
+| `moonlet.toml` | 7B | 64 (6 active) | 1 | Single-GPU research |
+| `moonlight.toml` | 16B | 64 (6 active) | 8 | Single-node RDEP |
+| `dsv2.toml` | DeepSeek-V2 | 160 (6 active) | 8+ | Multi-node |
+| `dsv3.toml` | DeepSeek-V3 | 256 (8 active) | 32+ | Production |
 
-HYDRA judge head artifact
--------------------------
+## Training
 
-This repository includes `nmoe/data/hydra_judge.pt`, a judge head checkpoint
-intended to be loaded on top of a frozen `gpt-oss-20B` backbone. The backbone
-weights are not included here.
+```bash
+# Single GPU
+python -m nmoe.train configs/moonlet.toml
 
-See `nmoe/data/HYDRA_JUDGE_HEAD.md`.
+# Multi-GPU (single node)
+torchrun --standalone --nproc_per_node=8 -m nmoe.train configs/moonlight.toml
 
-Licensing
----------
+# Multi-node
+torchrun --nnodes=N --nproc_per_node=8 --node_rank=R \
+    --master_addr=ADDR --master_port=PORT \
+    -m nmoe.train configs/dsv2.toml
 
-The repository is licensed under Apache-2.0; see `LICENSE` and `NOTICE`.
-Some files include third-party work under other licenses; see
-`THIRD_PARTY_NOTICES.md`.
+# Override config values
+python -m nmoe.train configs/moonlet.toml --steps=500 --dtype=bf16
+```
+
+## Why RDEP
+
+Traditional MoE uses NCCL all-to-all: every GPU waits for every other GPU.
+RDEP replaces this with direct NVSHMEM puts—each GPU writes tokens directly
+into the expert owner's buffer. No collective. No barrier. No waiting.
+
+```
+Source rank                       Owner rank
+───────────                       ──────────
+tokens ──▶ dispatch ─────────────▶ symmetric buffer
+              │                         │
+              │   nvshmem_putmem        │
+              │   + atomic slot         ▼
+              │                    expert GEMM
+              │                         │
+output ◀── scatter ◀───────────── return
+```
+
+## Data
+
+Training consumes pre-tokenized `.npy` shards.
+
+**Preprocess from HuggingFace:**
+
+```bash
+python -m nmoe.data.cli prep \
+    --source hf \
+    --dataset HuggingFaceFW/fineweb-edu \
+    --output /data/fineweb_edu \
+    --name fineweb_edu
+```
+
+Two workflows:
+- **Direct shards** (research): set `data_path` in config
+- **Flows** (production): set `flow_mode`, `mixture_toml`, `flow_profiles_toml`
+
+See `nmoe/data/README.md` for the full data pipeline.
+
+## Metrics & NVIZ
+
+Training writes:
+- Experiments → SQLite (`/data/experiments.db`)
+- Metrics → DuckDB (`/data/metrics/{run_id}/rank_{rank}.duckdb`)
+
+NVIZ is the included dashboard. See `nviz/README.md`.
+
+## Kubernetes
+
+Example manifests in `k8s/`:
+
+```bash
+kubectl apply -f k8s/train.yaml      # Training job
+kubectl apply -f k8s/nviz.yaml       # Metrics dashboard
+kubectl apply -f k8s/lab.yaml        # Jupyter environment
+```
+
+Edit hostnames, images, and storage before deploying.
+
+## Architecture
+
+```
+nmoe/
+├── train.py          # Training loop
+├── model.py          # Transformer + MoE
+├── moe.py            # Fused MoE autograd
+├── rdep.py           # RDEP orchestration
+├── checkpoint.py     # Split checkpoints
+├── config.py         # TOML config
+├── metrics.py        # DuckDB writer
+├── csrc/             # CUDA kernels
+├── data/             # Data pipeline, HYDRA
+├── attention/        # MLA, DSA, SWA
+└── eval/             # Evaluation hooks
+```
+
+## What's Inside
+
+**RDEP Kernels** — Fused dispatch/return using NVSHMEM (inter-node) and IPC (intra-node).
+BF16 and blockscaled (FP8/NVFP4) paths.
+
+**Grouped GEMMs** — cuBLASLt with per-expert scaling. SM100-optimized via CuTe DSL.
+
+**Deterministic Resume** — Checkpoint includes RNG state, shard cursor, config fingerprint.
+
+**HYDRA** — LLM-as-judge data quality pipeline. See `nmoe/data/HYDRA.md`.
+This repo includes `nmoe/data/hydra_judge.pt` (a small judge head `state_dict`); see `nmoe/data/HYDRA_JUDGE_HEAD.md`.
+
+## Non-Goals
+
+- Tensor parallel (ever)
+- NCCL all-to-all for MoE (ever)
+- H100/A100 support
+- Fallback paths
+
+One hardware target. One distribution strategy. B200 or bust.
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| `sm_100a` errors | You need B200. No workarounds. |
+| NVSHMEM init fails | Use IPC mode for single-node, or check bootstrap config |
+| OOM | Reduce `batch_size` or `seq_len` |
+
+## License
+
+Apache-2.0. See `LICENSE`, `NOTICE`, and `THIRD_PARTY_NOTICES.md`.
