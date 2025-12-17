@@ -1,4 +1,4 @@
-# NMoE
+# nmoe
 
 ```
    _ __   _ __ ___   ___   ___
@@ -9,37 +9,43 @@
 
 > No all-to-all. No tensor parallel. B200-only.
 
-MoE training on NVIDIA B200 using RDEP—direct GPU-to-GPU NVSHMEM puts instead of
-NCCL collectives. One fused kernel per direction. Zero collective synchronization
-on the expert path.
+This repo is an opinionated Mixture-of-Experts trainer hard-targeted to NVIDIA Blackwell B200 (`sm_100a`).
+MoE expert parallelism is implemented via **RDEP**: direct dispatch/return using CUDA IPC (intra-node) and NVSHMEM (inter-node),
+instead of NCCL all-to-all collectives on the expert path.
 
-## Prerequisites
+## Quick start
 
-- NVIDIA B200 GPU(s) (`sm_100a`)
-- CUDA 12.8+ / PyTorch nightly (cu128)
-- NVSHMEM 3.5+ (for multi-node RDEP)
+This repository is **container-first**. The supported way to build and run is via the Dockerfiles in `docker/`.
 
-## Quick Start (Docker)
-
-This repository is **container-first**. Build and run via the Dockerfiles in `docker/`.
+Boot a machine with B200 GPUs and run a minimal single-GPU smoke test (`moonlet`) inside the training image:
 
 ```bash
-# Build base image
+# Build base image (Dockerfile.train expects this tag)
 docker build -f docker/Dockerfile.base -t xjdr/nmoe:base .
 
 # Build training image
 docker build -f docker/Dockerfile.train -t xjdr/nmoe_train:latest .
 
-# Run single-GPU training
+# Run single-GPU training (mount /data for datasets, checkpoints, metrics)
 docker run --gpus all -v /data:/data xjdr/nmoe_train:latest \
-    python -m nmoe.train configs/moonlet.toml
+  python -m nmoe.train configs/moonlet.toml
 ```
 
-For multi-node with NVSHMEM:
+## Multi-GPU and multi-node
+
+Single-node (8×GPU) training:
+
+```bash
+torchrun --standalone --nproc_per_node=8 -m nmoe.train configs/moonlight.toml
+```
+
+Multi-node runs require NVSHMEM. Build the NVSHMEM-enabled image:
 
 ```bash
 docker build -f docker/Dockerfile.dist -t xjdr/nmoe_dist:latest .
 ```
+
+Kubernetes manifests in `k8s/` are templates for training, NVIZ, and profiling; edit hostnames, images, and storage before deploying.
 
 ## Configs
 
@@ -49,24 +55,6 @@ docker build -f docker/Dockerfile.dist -t xjdr/nmoe_dist:latest .
 | `moonlight.toml` | 16B | 64 (6 active) | 8 | Single-node RDEP |
 | `dsv2.toml` | DeepSeek-V2 | 160 (6 active) | 8+ | Multi-node |
 | `dsv3.toml` | DeepSeek-V3 | 256 (8 active) | 32+ | Production |
-
-## Training
-
-```bash
-# Single GPU
-python -m nmoe.train configs/moonlet.toml
-
-# Multi-GPU (single node)
-torchrun --standalone --nproc_per_node=8 -m nmoe.train configs/moonlight.toml
-
-# Multi-node
-torchrun --nnodes=N --nproc_per_node=8 --node_rank=R \
-    --master_addr=ADDR --master_port=PORT \
-    -m nmoe.train configs/dsv2.toml
-
-# Override config values
-python -m nmoe.train configs/moonlet.toml --steps=500 --dtype=bf16
-```
 
 ## Why RDEP
 
@@ -114,18 +102,6 @@ Training writes:
 
 NVIZ is the included dashboard. See `nviz/README.md`.
 
-## Kubernetes
-
-Example manifests in `k8s/`:
-
-```bash
-kubectl apply -f k8s/train.yaml      # Training job
-kubectl apply -f k8s/nviz.yaml       # Metrics dashboard
-kubectl apply -f k8s/lab.yaml        # Jupyter environment
-```
-
-Edit hostnames, images, and storage before deploying.
-
 ## Architecture
 
 ```
@@ -154,6 +130,31 @@ BF16 and blockscaled (FP8/NVFP4) paths.
 
 **HYDRA** — LLM-as-judge data quality pipeline. See `nmoe/data/HYDRA.md`.
 This repo includes `nmoe/data/hydra_judge.pt` (a small judge head `state_dict`); see `nmoe/data/HYDRA_JUDGE_HEAD.md`.
+
+## Tests
+
+The project is primarily validated via end-to-end training runs. Some Triton kernels include optional `pytest`-guarded tests
+inside the module (e.g. `nmoe/triton/nsa.py`, `nmoe/triton/swa.py`).
+
+## Contributing
+
+nmoe is intentionally narrow and opinionated: B200-only (`sm_100a`), RDEP expert parallelism, TOML configs, and no NCCL all-to-all on the MoE path.
+We prefer one clear way to do each supported job over many interchangeable stacks.
+
+## Acknowledgements
+
+This codebase borrows ideas from and interoperates with upstream ecosystems including PyTorch, Triton, NVSHMEM, CUTLASS, and the DeepSeek family of MoE architectures.
+See `THIRD_PARTY_NOTICES.md` for license attributions.
+
+## Cite
+
+```bibtex
+@misc{nmoe,
+  title = {nmoe: B200-targeted MoE training with RDEP},
+  year = {2025},
+  publisher = {GitHub}
+}
+```
 
 ## Non-Goals
 

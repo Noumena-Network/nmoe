@@ -13,6 +13,11 @@ This means: no fallbacks, no hacks, no shortcuts. Production-grade, Google-quali
 - The supported execution path is container-first (`docker/` + TOML configs).
 - Keep surfaces small: no second stacks for the same use-case.
 
+## Execution Environment
+
+- Assume no usable GPU locally; prefer running via the provided Docker images and/or Kubernetes manifests.
+- Do not introduce a second installation path. If it is not container-first, it must be explicitly opt-in and documented.
+
 Our ethos: do one thing, exceedingly well — state‑of‑the‑art MoE training on B200 with RDEP — and nothing else. Elegant minimalism isn’t just fewer lines; it’s disciplined intent plus impeccable execution.
 
 Principles
@@ -74,7 +79,7 @@ When you work on distributed: it must be correct and optimal for our expert para
 
 Purpose
 - Build a production‑grade Mixture‑of‑Experts (MoE) trainer for NVIDIA B200s with elegant minimalism.
-- Defaults favor state‑of‑the‑art performance: FP8 E4M3 experts, cuBLASLt grouped GEMMs, and RDEP for multi‑GPU expert parallelism.
+- Defaults favor state‑of‑the‑art performance: BF16/FP8/NVFP4 experts, cuBLASLt grouped GEMMs, and RDEP for multi‑GPU expert parallelism.
 - No fallbacks, hacks, or shortcuts; correctness and performance are first‑class.
 
 References
@@ -90,3 +95,11 @@ Non‑Goals
 
 Hardware & Precision
 - Primary target: NVIDIA B200 (`sm_100a`).
+- Supported dtypes: `bf16`, `fp8`, `nvfp4` (blockscaled FP4).
+- Default attention: MLA (Multi-headed Latent Attention).
+- Tokenizer: `o200k_harmony` (vocab_size=201088).
+
+Optimizer & Schedule
+- Separate LRs for dense, router, and expert params.
+- WSD scheduler (Warmup-Sustain-Decay) with token-based phases.
+- Optional Muon optimizer for attention layers.
