@@ -10,7 +10,7 @@ import torch.distributed as dist
 
 from nmoe.attention.rope import RotaryEmbedding
 from nmoe.rdep import Rdep
-from nmoe.blockscaled.ggemm import quantize_weights
+from nmoe.blockscaled.grouped import quantize_weights
 from nmoe.norm import RMSNorm
 
 

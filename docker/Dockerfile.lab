@@ -1,0 +1,52 @@
+# Jupyter Lab research environment with GPU support
+# Usage: docker build -f docker/Dockerfile.lab -t xjdr/nmoe_lab:latest .
+
+FROM xjdr/nmoe_debug:latest
+
+WORKDIR /workspace/nmoe
+
+# Install Jupyter Lab, extensions, and research dependencies
+RUN . .venv/bin/activate && uv pip install \
+    jupyterlab>=4.0 \
+    ipywidgets \
+    matplotlib \
+    seaborn \
+    pandas \
+    plotly \
+    nbformat \
+    # Theme
+    rose-pine-jupyterlab \
+    # Extensions
+    jupyterlab-nvdashboard \
+    jupyterlab-execute-time \
+    jupyterlab-git \
+    jupyter-resource-usage
+
+# Jupyter config: no token (auth via ingress), allow any origin for websockets
+RUN mkdir -p /root/.jupyter && cat > /root/.jupyter/jupyter_lab_config.py << 'EOF'
+c.ServerApp.token = ''
+c.ServerApp.password = ''
+c.ServerApp.allow_origin = '*'
+c.ServerApp.allow_remote_access = True
+c.ServerApp.ip = '0.0.0.0'
+c.ServerApp.port = 8888
+c.ServerApp.open_browser = False
+c.ServerApp.root_dir = '/workspace/nmoe'
+c.ServerApp.terminado_settings = {'shell_command': ['/bin/bash', '-l']}
+
+# Disable XSRF for API access (protected by ingress auth)
+c.ServerApp.disable_check_xsrf = True
+
+# Increase websocket message size for large outputs
+c.ServerApp.tornado_settings = {
+    'websocket_max_message_size': 100 * 1024 * 1024,
+}
+EOF
+
+EXPOSE 8888
+
+# Health check for k8s readiness probe
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+    CMD curl -f http://localhost:8888/api || exit 1
+
+CMD ["/bin/bash", "-c", "source /workspace/nmoe/.venv/bin/activate && jupyter lab --allow-root"]

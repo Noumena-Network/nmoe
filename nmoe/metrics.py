@@ -15,9 +15,8 @@ import os as _os
 
 # Optional top‑level imports to avoid in‑function imports
 try:  # model class references used by register_model_timers
-    from nmoe.model import Attention, MLP  # type: ignore
+    from nmoe.model import MLP  # type: ignore
 except Exception:  # pragma: no cover
-    Attention = None  # type: ignore
     MLP = None  # type: ignore
 
 try:  # GPU metrics poller (C++ extension), optional
@@ -335,15 +334,11 @@ def _install_timers_on_module(mod: torch.nn.Module, tag: str) -> None:
 
 
 def register_model_timers(model: torch.nn.Module) -> None:
-    """Register timing hooks on Attention, dense MLP, and LM head.
+    """Register timing hooks on dense MLP and LM head.
 
     This keeps model code untouched and preserves minimalism. Hooks can be disabled
     by setting NMOE_TIMERS=0 in the environment.
     """
-    if Attention is not None:
-        for m in model.modules():
-            if isinstance(m, Attention):
-                _install_timers_on_module(m, 'attn')
     if MLP is not None:
         for m in model.modules():
             if isinstance(m, MLP):

@@ -30,16 +30,6 @@ def _parse_source(src: str) -> Tuple[str, List[str]]:
     return scheme, args
 
 
-def _safe_get(obj, *keys, default=None):
-    cur = obj
-    for k in keys:
-        if isinstance(cur, dict) and k in cur:
-            cur = cur[k]
-        else:
-            return default
-    return cur
-
-
 # ----------------------
 # Choices task adapters
 # ----------------------

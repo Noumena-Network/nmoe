@@ -66,20 +66,6 @@ __device__ __forceinline__ float e8m0_inv_decode_to_f32(uint8_t byte) {
     return __uint_as_float(bits);
 }
 
-// Host versions for reference/testing
-__host__ inline uint8_t host_e8m0_encode(float s) {
-    if (s <= 0.0f) return 0;
-    float e = log2f(s);
-    int ei = static_cast<int>(ceilf(e)) + 127;
-    ei = (ei < 0) ? 0 : ((ei > 254) ? 254 : ei);
-    return static_cast<uint8_t>(ei);
-}
-
-__host__ inline float host_e8m0_decode(uint8_t byte) {
-    int e = static_cast<int>(byte) - 127;
-    return powf(2.0f, static_cast<float>(e));
-}
-
 // ============================================================================
 // FP8 E4M3 Conversion
 // ============================================================================
@@ -149,21 +135,6 @@ __device__ __forceinline__ uint16_t f32x4_to_e2m1x4_packed(float x0, float x1, f
 }
 
 // With stochastic rounding (requires random bits)
-__device__ __forceinline__ uint16_t f32x4_to_e2m1x4_packed_sr(
-    float x0, float x1, float x2, float x3, uint32_t rbits) {
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 1000)
-    uint16_t out;
-    // cvt.rs.satfinite.e2m1x4.f32 takes 4 floats + random bits
-    asm volatile("cvt.rs.satfinite.e2m1x4.f32 %0, {%1, %2, %3, %4}, %5;\n"
-                 : "=h"(out)
-                 : "f"(x0), "f"(x1), "f"(x2), "f"(x3), "r"(rbits));
-    return out;
-#else
-    (void)rbits;
-    return 0;
-#endif
-}
-
 // Convert 2 E2M1 nibbles (8 bits) to half2
 // Uses cvt.rn.f16x2.e2m1x2 PTX instruction (sm_100+)
 __device__ __forceinline__ void e2m1x2_to_f16x2(uint8_t packed, __half& h0, __half& h1) {
@@ -209,13 +180,6 @@ __device__ __forceinline__ void e2m1x4_packed_to_f32x4(uint16_t packed, float& x
 __device__ __forceinline__ uint16_t f32x4_to_e2m1x4_packed(float, float, float, float) {
 #if defined(__CUDA_ARCH__)
     __trap(); // NVFP4 not enabled
-#endif
-    return 0;
-}
-
-__device__ __forceinline__ uint16_t f32x4_to_e2m1x4_packed_sr(float, float, float, float, uint32_t) {
-#if defined(__CUDA_ARCH__)
-    __trap();
 #endif
     return 0;
 }
@@ -472,32 +436,6 @@ __device__ __forceinline__ int atomicSub_sys(int* ptr, int val) {
 }
 
 // --- Shared memory atomics (CTA scope) ---
-__device__ __forceinline__ int atom_cas_acquire_cta_shared(int* ptr, int cmp, int val) {
-    int ret;
-    asm volatile("atom.acquire.cta.shared::cta.cas.b32 %0, [%1], %2, %3;"
-                 : "=r"(ret) : "l"(ptr), "r"(cmp), "r"(val));
-    return ret;
-}
-
-__device__ __forceinline__ int atom_exch_release_cta_shared(int* ptr, int val) {
-    int ret;
-    asm volatile("atom.release.cta.shared::cta.exch.b32 %0, [%1], %2;"
-                 : "=r"(ret) : "l"(ptr), "r"(val));
-    return ret;
-}
-
-// --- Math approximations ---
-__device__ __forceinline__ float lg2_approx(float x) {
-    float ret;
-    asm volatile("lg2.approx.f32 %0, %1;" : "=f"(ret) : "f"(x));
-    return ret;
-}
-
-__device__ __forceinline__ float ex2_approx(float x) {
-    float ret;
-    asm volatile("ex2.approx.f32 %0, %1;" : "=f"(ret) : "f"(x));
-    return ret;
-}
 
 // --- Lane ID ---
 __device__ __forceinline__ int get_laneid() {

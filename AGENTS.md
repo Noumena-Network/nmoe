@@ -7,7 +7,6 @@ data loading, diagnostics—that are fully and totally optimized for state-of-th
 
 This means: no fallbacks, no hacks, no shortcuts. Production-grade, Google-quality code that at all times demonstrates a maniacal obsession with elegant minimalism.
 
-This repository keeps runtime and ops notes in `AGENTS.md.local`.
 
 Our ethos: do one thing, exceedingly well — state‑of‑the‑art MoE training on B200 with RDEP — and nothing else. Elegant minimalism isn’t just fewer lines; it’s disciplined intent plus impeccable execution.
 
@@ -57,7 +56,6 @@ This repo is designed to be a one-stop shop for both research and full lab-quali
 When you work on kernels: they must be fully optimized for NVFP4 and MXFP8 training with RDEP and stream sync for OUR workload. 
 When you work on distributed: it must be correct and optimal for our expert parallelism patterns.
 
-See: `AGENTS.md.local` for exact build/run commands for this environment.
 
 ## Contract (Principles)
 

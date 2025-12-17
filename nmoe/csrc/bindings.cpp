@@ -48,7 +48,6 @@ extern "C" {
 
   // BF16 path
   void rdep_alloc_bf16(size_t capacity, int H, int n_local);
-  void rdep_reset_bf16();
   int  rdep_dispatch_meta_bf16(const void* x, const int* eids, const float* gates,
                                int T, int K, int align,
                                int* offs_pad_out, int* M_pad_out,
@@ -57,8 +56,6 @@ extern "C" {
   void rdep_gather_meta_sorted_bf16(int64_t* row_id_out, float* gate_out, int M_recv, cudaStream_t stream);
   void rdep_gather_from_pad_bf16(const void* in_pad, void* out_sorted, int M_recv, int H, cudaStream_t stream);
   void rdep_scatter_sorted_to_pad_bf16(const void* in_sorted, void* out_pad, int M_recv, int H, cudaStream_t stream);
-  void rdep_scatter_sorted_to_pad_with_dest_bf16(const void* in_sorted, const int* dest,
-                                                 void* out_pad, int M_recv, int H, cudaStream_t stream);
   int  rdep_dispatch(const void* x, const int* eids, const float* gates,
                      int T, int K,
                      void* Xe_out, int* offs_pad_out, int* dest_out,
@@ -75,12 +72,6 @@ extern "C" {
                             void* dX_out, int M, int T, int H, int K, cudaStream_t stream);
   void rdep_scatter_dx_bf16_internal(const void* dXe_pad, const int64_t* row_id,
                                      void* dX_out, int M, int T, int H, int K, cudaStream_t stream);
-  void rdep_gather_dy_ipc_bf16(const void* dY_local, const void* Ye_sorted,
-                               const int64_t* row_id, const float* gate_sorted,
-                               void* dYe_out, float* dGate_sorted_out, float* dGates_tk_out,
-                               int M, int T, int H, int K, cudaStream_t stream);
-  void rdep_scatter_dx_ipc_bf16(const void* dXe_sorted, const int64_t* row_id,
-                                void* dX_out, int M, int T, int H, int K, cudaStream_t stream);
   void rdep_gather_dy_dist_bf16(const void* dY_local, const int* eids, const void* Ye_sorted,
                                 const int64_t* row_id, const float* gate_sorted,
                                 void* dYe_out, float* dGate_sorted_out, float* dGates_tk_out,
@@ -110,31 +101,12 @@ extern "C" {
 
   // Blockscaled path
   void rdep_alloc_blockscaled(size_t capacity, int H, int n_local, int profile);
-  void rdep_reset_blockscaled();
-  int  rdep_dispatch_blockscaled(const void* x, const int* eids, const float* gates,
-                                  int T, int K,
-                                  void* Xe_q_out, void* Xe_sf_out,
-                                  int* offs_pad_out, int* dest_out,
-                                  int64_t* row_id_out, float* gate_out,
-                                  int* M_pad_out, cudaStream_t stream);
-  void rdep_return_scatter_blockscaled(const void* Ye, void* out, int M_recv, int T, int K,
-                                       cudaStream_t stream);
 
   // Quantization and swizzle (dense/weights usage only)
   cudaError_t quant_fp8(const void* x, int ldx,
                         void* out, int ld_out,
                         void* sfa, int ld_sf,
                         int M, int K, cudaStream_t stream);
-  cudaError_t dequant_fp8_to_bf16(const void* q, int ldq,
-                                  const void* sfa, int ld_sf,
-                                  int M, int K,
-                                  void* out, int ldo,
-                                  cudaStream_t stream);
-  cudaError_t dequant_fp8_to_bf16(const void* q, int ldq,
-                                  const void* sfa, int ld_sf,
-                                  int M, int K,
-                                  void* out, int ldo,
-                                  cudaStream_t stream);
   cudaError_t quant_nvfp4(const void* x, int ldx,
                           void* out, int ld_out,
                           void* sfa, int ld_sf,
@@ -158,65 +130,18 @@ extern "C" {
                               void* dH1_out, int ld_dH1,
                               void* dH3_out, int ld_dH3,
                               int M, int K, cudaStream_t stream);
-  cudaError_t swiglu_quant_fp8(const void* h13, int ld_h13,
-                               void* out, int ld_out,
-                               void* sfa, int ld_sf,
-                               int M, int K, cudaStream_t stream);
-  cudaError_t swiglu_quant_nvfp4(const void* h13, int ld_h13,
-                                 void* out, int ld_out,
-                                 void* sfa, int ld_sf,
-                                 int M, int K, cudaStream_t stream);
-  // BF16 grouped GEMM via cuBLASLt (MoE backward).
-  cudaError_t bf16_dgrad_w2_cublaslt(const void* dY,
-                                     void* dA_out,
-                                     const void* W2,
-                                     const int32_t* offs_pad,
-                                     int E, int H, int Dff,
-                                     cudaStream_t stream);
-  cudaError_t bf16_dgrad_w2_cublas_grouped(const void* dY,
-                                           void* dA_out,
-                                           const void* W2,
-                                           const int32_t* offs_pad,
-                                           int E, int H, int Dff,
-                                           cudaStream_t stream);
   cudaError_t bf16_wgrad_w2_cublaslt(const void* A,
                                      const void* dY,
                                      void* dW2_out,
                                      const int32_t* offs_pad,
                                      int E, int H, int Dff,
                                      cudaStream_t stream);
-  cudaError_t bf16_wgrad_w2_cublas_grouped(const void* A,
-                                           const void* dY,
-                                           void* dW2_out,
-                                           const int32_t* offs_pad,
-                                           int E, int H, int Dff,
-                                           cudaStream_t stream);
   cudaError_t bf16_wgrad_w13_cublaslt(const void* X,
                                       const void* dH,
                                       void* dW_out,
                                       const int32_t* offs_pad,
                                       int E, int H, int Dff,
                                       cudaStream_t stream);
-  cudaError_t bf16_wgrad_w13_cublas_grouped(const void* X,
-                                            const void* dH,
-                                            void* dW_out,
-                                            const int32_t* offs_pad,
-                                            int E, int H, int Dff,
-                                            cudaStream_t stream);
-  cudaError_t bf16_dgrad_w13_cublaslt(const void* dH,
-                                      const void* W,
-                                      void* dX_out,
-                                      const int32_t* offs_pad,
-                                      int E, int H, int Dff,
-                                      float beta,
-                                      cudaStream_t stream);
-  cudaError_t bf16_dgrad_w13_cublas_grouped(const void* dH,
-                                            const void* W,
-                                            void* dX_out,
-                                            const int32_t* offs_pad,
-                                            int E, int H, int Dff,
-                                            float beta,
-                                            cudaStream_t stream);
   cudaError_t swiglu_quant_fp8_sf_strided_mma(const void* h13, int ld_h13,
                                               void* out, int ld_out,
                                               void* sf_mma,
@@ -237,66 +162,8 @@ extern "C" {
                                    void* out, int ld_out,
                                    const void* sfa, int ld_sf,
                                    int M, int K, cudaStream_t stream);
-  cudaError_t dequant_nvfp4_to_bf16(const void* q, int ldq,
-                                    const void* sfa, int ld_sf,
-                                    int M, int K,
-                                    void* out, int ldo,
-                                    cudaStream_t stream);
-  cudaError_t unpack_nvfp4_to_bytes(const void* q, int ldq,
-                                    void* out_bytes, int ld_bytes,
-                                    int M, int K,
-                                    cudaStream_t stream);
-  cudaError_t unpack_nvfp4_to_bytes_variant(const void* q, int ldq,
-                                            void* out_bytes, int ld_bytes,
-                                            int M, int K, int variant,
-                                            cudaStream_t stream);
-  cudaError_t repack_nvfp4_dense_perm(const void* in_u8, int ldi_bytes,
-                                      void* out_u8, int ldo_bytes,
-                                      const void* perm32,
-                                      int M, int K,
-                                      cudaStream_t stream);
-  cudaError_t swizzle_sf_dense_nvfp4(const void* sf_mkl, void* sf_mma,
-                                     int M, int sf_k, cudaStream_t stream);
-  cudaError_t fused_dense_nvfp4_gemm_bf16(const void* A_q, int ldq,
-                                          const void* SFA, int ld_sf,
-                                          const void* W, int ldw,
-                                          const void* bias,
-                                          void* Y, int ldy,
-                                          int M, int N, int K,
-                                          cudaStream_t stream);
-  cudaError_t fused_dense_quant_nvfp4_gemm_bf16(const void* A, int lda,
-                                                const void* W, int ldw,
-                                                const void* bias,
-                                                void* Y, int ldy,
-                                                int M, int N, int K,
-                                                cudaStream_t stream);
-  cudaError_t fused_dense_quant_fp8_gemm_bf16(const void* A, int lda,
-                                              const void* W, int ldw,
-                                              const void* bias,
-                                              void* Y, int ldy,
-                                              int M, int N, int K,
-                                              cudaStream_t stream);
-  cudaError_t fused_dense_quant_fp8_gemm_bf16(const void* A, int lda,
-                                              const void* W, int ldw,
-                                              const void* bias,
-                                              void* Y, int ldy,
-                                              int M, int N, int K,
-                                              cudaStream_t stream);
   cudaError_t swizzle_sf_mkl_to_mma(const void* sf_mkl, void* sf_mma,
                                     int M, int sf_k, cudaStream_t stream);
-  // Per-expert strided swizzle for activation SFs
-  cudaError_t swizzle_sf_strided(
-      const void* sf_mkl,   // [M_pad, sf_k] uint8, row-major
-      void* sf_mma,         // [E, M_e_swizzle, sf_k_pad] uint8, per-expert swizzled
-      const int32_t* offs,  // [E+1] cumulative offsets with leading 0
-      int E, int sf_k, int sf_k_pad, int M_pad, int M_e_swizzle,
-      cudaStream_t stream);
-  cudaError_t unswizzle_sf_strided(
-      const void* sf_mma,   // [E, M_e_swizzle, sf_k_pad] uint8, per-expert swizzled
-      void* sf_mkl,         // [M_pad, sf_k] uint8, row-major
-      const int32_t* offs,  // [E+1] cumulative offsets with leading 0
-      int E, int sf_k, int sf_k_pad, int M_pad, int M_e_swizzle,
-      cudaStream_t stream);
   cudaError_t expert_adamw_step(
       int profile,
       void* W1, const void* dW1, void* m1, void* v1,
@@ -378,12 +245,6 @@ PYBIND11_MODULE(rdep, m) {
   m.def("has_nvshmem", &rdep_has_nvshmem,
         "Check if NVSHMEM support is compiled in");
 
-  m.def("debug_test", []() {
-    fprintf(stderr, "[DEBUG_TEST] C++ module is loaded!\n");
-    fflush(stderr);
-    return 42;
-  }, "Test that C++ module is loaded");
-
   m.def("get_ipc_handle_bf16", []() {
     py::array_t<uint8_t> handle(IPC_HANDLE_SIZE);
     rdep_get_ipc_handle_bf16(handle.mutable_data());
@@ -416,9 +277,6 @@ PYBIND11_MODULE(rdep, m) {
     rdep_alloc_bf16(capacity, H, n_local);
   }, py::arg("capacity"), py::arg("H"), py::arg("n_local"),
      "Allocate BF16 dispatch buffers");
-
-  m.def("reset_bf16", &rdep_reset_bf16,
-        "Reset BF16 counters");
 
   m.def("dispatch_meta_bf16", [](uintptr_t x_ptr, uintptr_t eids_ptr, uintptr_t gates_ptr,
                                  int T, int K, int align,
@@ -479,43 +337,6 @@ PYBIND11_MODULE(rdep, m) {
      py::arg("stream") = py::none(),
      "Scatter BF16 rows from sorted layout into padded layout (requires prior dispatch_meta_bf16)");
 
-  m.def("scatter_sorted_to_pad_with_dest_bf16", [](uintptr_t in_sorted_ptr, uintptr_t dest_ptr,
-                                                  uintptr_t out_pad_ptr,
-                                                  int M_recv, int H, py::object stream) {
-    rdep_scatter_sorted_to_pad_with_dest_bf16(
-        reinterpret_cast<const void*>(in_sorted_ptr),
-        reinterpret_cast<const int*>(dest_ptr),
-        reinterpret_cast<void*>(out_pad_ptr),
-        M_recv, H,
-        to_stream(stream));
-  }, py::arg("in_sorted"), py::arg("dest"), py::arg("out_pad"),
-     py::arg("M_recv"), py::arg("H"),
-     py::arg("stream") = py::none(),
-     "Scatter BF16 rows from sorted layout into padded layout (explicit dest mapping)");
-
-  m.def("dispatch", [](uintptr_t x_ptr, uintptr_t eids_ptr, uintptr_t gates_ptr,
-                       int T, int K,
-                       uintptr_t Xe_out_ptr, uintptr_t offs_pad_ptr,
-                       uintptr_t dest_ptr, uintptr_t row_id_ptr, uintptr_t gate_sorted_ptr, uintptr_t M_pad_ptr,
-                       py::object stream) {
-    return rdep_dispatch(
-        reinterpret_cast<const void*>(x_ptr),
-        reinterpret_cast<const int*>(eids_ptr),
-        reinterpret_cast<const float*>(gates_ptr),
-        T, K,
-        reinterpret_cast<void*>(Xe_out_ptr),
-        reinterpret_cast<int*>(offs_pad_ptr),
-        reinterpret_cast<int*>(dest_ptr),
-        reinterpret_cast<int64_t*>(row_id_ptr),
-        reinterpret_cast<float*>(gate_sorted_ptr),
-        reinterpret_cast<int*>(M_pad_ptr),
-        to_stream(stream));
-  }, py::arg("x"), py::arg("eids"), py::arg("gates"),
-     py::arg("T"), py::arg("K"),
-     py::arg("Xe_out"), py::arg("offs_pad"), py::arg("dest"), py::arg("row_id"), py::arg("gate_sorted"), py::arg("M_pad"),
-     py::arg("stream") = py::none(),
-     "Dispatch BF16 tokens to experts");
-
   m.def("return_scatter", [](uintptr_t Ye_ptr, uintptr_t out_ptr,
                              int M_recv, int T, int K,
                              py::object stream) {
@@ -565,23 +386,6 @@ PYBIND11_MODULE(rdep, m) {
      py::arg("stream") = py::none(),
      "Scatter dGate[M] back to [T,K] (BF16 path)");
 
-  m.def("scatter_dx_bf16", [](uintptr_t dXe_pad_ptr, uintptr_t dest_ptr, uintptr_t row_id_ptr,
-                             uintptr_t dX_out_ptr,
-                             int M, int T, int H, int K,
-                             py::object stream) {
-    rdep_scatter_dx_bf16(
-        reinterpret_cast<const void*>(dXe_pad_ptr),
-        reinterpret_cast<const int*>(dest_ptr),
-        reinterpret_cast<const int64_t*>(row_id_ptr),
-        reinterpret_cast<void*>(dX_out_ptr),
-        M, T, H, K,
-        to_stream(stream));
-  }, py::arg("dXe_pad"), py::arg("dest"), py::arg("row_id"),
-     py::arg("dX_out"),
-     py::arg("M"), py::arg("T"), py::arg("H"), py::arg("K"),
-     py::arg("stream") = py::none(),
-     "Backward scatter: dXe_pad[M_pad,H] -> dX[T,H] (float32 accum)");
-
   m.def("scatter_dx_bf16_internal", [](uintptr_t dXe_pad_ptr, uintptr_t row_id_ptr,
                                       uintptr_t dX_out_ptr,
                                       int M, int T, int H, int K,
@@ -596,43 +400,6 @@ PYBIND11_MODULE(rdep, m) {
      py::arg("M"), py::arg("T"), py::arg("H"), py::arg("K"),
      py::arg("stream") = py::none(),
      "Backward scatter: dXe_pad[M_pad,H] -> dX[T,H] using internal dest mapping (float32 accum)");
-
-  m.def("gather_dy_ipc_bf16", [](uintptr_t dY_ptr, uintptr_t Ye_ptr,
-                                uintptr_t row_id_ptr, uintptr_t gate_ptr,
-                                uintptr_t dYe_ptr, uintptr_t dGate_sorted_ptr, uintptr_t dGates_tk_ptr,
-                                int M, int T, int H, int K,
-                                py::object stream) {
-    rdep_gather_dy_ipc_bf16(
-        reinterpret_cast<const void*>(dY_ptr),
-        reinterpret_cast<const void*>(Ye_ptr),
-        reinterpret_cast<const int64_t*>(row_id_ptr),
-        reinterpret_cast<const float*>(gate_ptr),
-        reinterpret_cast<void*>(dYe_ptr),
-        reinterpret_cast<float*>(dGate_sorted_ptr),
-        reinterpret_cast<float*>(dGates_tk_ptr),
-        M, T, H, K,
-        to_stream(stream));
-  }, py::arg("dY"), py::arg("Ye"),
-     py::arg("row_id"), py::arg("gate_sorted"),
-     py::arg("dYe_out"), py::arg("dGate_sorted_out"), py::arg("dGates_tk_out"),
-     py::arg("M"), py::arg("T"), py::arg("H"), py::arg("K"),
-     py::arg("stream") = py::none(),
-     "IPC backward gather: stages dY, computes dYe and returns/scatters dGate to [T,K]");
-
-  m.def("scatter_dx_ipc_bf16", [](uintptr_t dXe_sorted_ptr, uintptr_t row_id_ptr,
-                                 uintptr_t dX_out_ptr,
-                                 int M, int T, int H, int K,
-                                 py::object stream) {
-    rdep_scatter_dx_ipc_bf16(
-        reinterpret_cast<const void*>(dXe_sorted_ptr),
-        reinterpret_cast<const int64_t*>(row_id_ptr),
-        reinterpret_cast<void*>(dX_out_ptr),
-        M, T, H, K,
-        to_stream(stream));
-  }, py::arg("dXe_sorted"), py::arg("row_id"), py::arg("dX_out"),
-     py::arg("M"), py::arg("T"), py::arg("H"), py::arg("K"),
-     py::arg("stream") = py::none(),
-     "IPC backward scatter: sends dXe rows to sources and accumulates into dX[T,H]");
 
   m.def("gather_dy_dist_bf16", [](uintptr_t dY_ptr, uintptr_t eids_ptr, uintptr_t Ye_ptr,
                                  uintptr_t row_id_ptr, uintptr_t gate_ptr,
@@ -677,46 +444,6 @@ PYBIND11_MODULE(rdep, m) {
     rdep_alloc_blockscaled(capacity, H, n_local, profile);
   }, py::arg("capacity"), py::arg("H"), py::arg("n_local"), py::arg("profile"),
      "Allocate blockscaled dispatch buffers (profile: 0=fp8, 1=nvfp4)");
-
-  m.def("reset_blockscaled", &rdep_reset_blockscaled,
-        "Reset blockscaled counters");
-
-  m.def("dispatch_blockscaled", [](uintptr_t x_ptr, uintptr_t eids_ptr, uintptr_t gates_ptr,
-                                   int T, int K,
-                                   uintptr_t Xe_q_ptr, uintptr_t Xe_sf_ptr,
-                                   uintptr_t offs_pad_ptr, uintptr_t dest_ptr,
-                                   uintptr_t row_id_ptr, uintptr_t gate_sorted_ptr,
-                                   uintptr_t M_pad_ptr, py::object stream) {
-    return rdep_dispatch_blockscaled(
-        reinterpret_cast<const void*>(x_ptr),
-        reinterpret_cast<const int*>(eids_ptr),
-        reinterpret_cast<const float*>(gates_ptr),
-        T, K,
-        reinterpret_cast<void*>(Xe_q_ptr),
-        reinterpret_cast<void*>(Xe_sf_ptr),
-        reinterpret_cast<int*>(offs_pad_ptr),
-        reinterpret_cast<int*>(dest_ptr),
-        reinterpret_cast<int64_t*>(row_id_ptr),
-        reinterpret_cast<float*>(gate_sorted_ptr),
-        reinterpret_cast<int*>(M_pad_ptr),
-        to_stream(stream));
-  }, py::arg("x"), py::arg("eids"), py::arg("gates"),
-     py::arg("T"), py::arg("K"),
-     py::arg("Xe_q"), py::arg("Xe_sf"), py::arg("offs_pad"), py::arg("dest"), py::arg("row_id"), py::arg("gate_sorted"), py::arg("M_pad"),
-     py::arg("stream") = py::none(),
-     "Dispatch blockscaled tokens to experts (fused quant+sort+pack)");
-
-  m.def("return_scatter_blockscaled", [](uintptr_t Ye_ptr, uintptr_t out_ptr,
-                                         int M_recv, int T, int K,
-                                         py::object stream) {
-    rdep_return_scatter_blockscaled(
-        reinterpret_cast<const void*>(Ye_ptr),
-        reinterpret_cast<void*>(out_ptr),
-        M_recv, T, K, to_stream(stream));
-  }, py::arg("Ye"), py::arg("out"),
-     py::arg("M_recv"), py::arg("T"), py::arg("K"),
-     py::arg("stream") = py::none(),
-     "Scatter expert outputs back to tokens (blockscaled)");
 
   // ========== Expert Optimizer (AdamW + cache emit) ==========
   m.def(
@@ -793,22 +520,6 @@ PYBIND11_MODULE(rdep, m) {
      py::arg("sfa"), py::arg("ld_sf"), py::arg("M"), py::arg("K"),
      py::arg("stream") = py::none(),
       "BF16 -> FP8 (packed u16) with SFA (rowwise, sf_vec=32)");
-
-  m.def("dequant_fp8_to_bf16", [](uintptr_t q_ptr, int ldq,
-                                   uintptr_t sfa_ptr, int ld_sf,
-                                   int M, int K,
-                                   uintptr_t out_ptr, int ldo,
-                                   py::object stream) {
-    auto err = dequant_fp8_to_bf16(reinterpret_cast<const void*>(q_ptr), ldq,
-                                   reinterpret_cast<const void*>(sfa_ptr), ld_sf,
-                                   M, K,
-                                   reinterpret_cast<void*>(out_ptr), ldo,
-                                   to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("dequant_fp8_to_bf16 failed");
-  }, py::arg("q"), py::arg("ldq"), py::arg("sfa"), py::arg("ld_sf"),
-     py::arg("M"), py::arg("K"), py::arg("out"), py::arg("ldo"),
-     py::arg("stream") = py::none(),
-     "FP8 (packed u16) + SFA (E8M0, per-32) -> BF16");
 
   m.def("quant_nvfp4", [](uintptr_t x_ptr, int ldx,
                            uintptr_t out_ptr, int ld_out,
@@ -891,27 +602,6 @@ PYBIND11_MODULE(rdep, m) {
      py::arg("stream") = py::none(),
      "SwiGLU backward (BF16): (h1, h3, dA) -> (A, dH1, dH3)");
 
-  m.def("bf16_dgrad_w2_cublaslt", [](uintptr_t dY_ptr,
-                                     uintptr_t dA_out_ptr,
-                                     uintptr_t W2_ptr,
-                                     uintptr_t offs_pad_ptr,
-                                     int E, int H, int Dff,
-                                     py::object stream) {
-    auto err = bf16_dgrad_w2_cublaslt(reinterpret_cast<const void*>(dY_ptr),
-                                      reinterpret_cast<void*>(dA_out_ptr),
-                                      reinterpret_cast<const void*>(W2_ptr),
-                                      reinterpret_cast<const int32_t*>(offs_pad_ptr),
-                                      E, H, Dff,
-                                      to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("bf16_dgrad_w2_cublaslt failed");
-  }, py::arg("dY"),
-     py::arg("dA_out"),
-     py::arg("W2"),
-     py::arg("offs_pad"),
-     py::arg("E"), py::arg("H"), py::arg("Dff"),
-     py::arg("stream") = py::none(),
-     "Grouped BF16 dgrad for W2 via cuBLASLt: dA = dY @ W2^T (FP32 accum)");
-
   m.def("bf16_wgrad_w2_cublaslt", [](uintptr_t A_ptr,
                                      uintptr_t dY_ptr,
                                      uintptr_t dW2_out_ptr,
@@ -953,149 +643,6 @@ PYBIND11_MODULE(rdep, m) {
      py::arg("E"), py::arg("H"), py::arg("Dff"),
      py::arg("stream") = py::none(),
      "Grouped BF16 wgrad via cuBLASLt: dW = X^T @ dH (FP32 accum)");
-
-  m.def("bf16_dgrad_w13_cublaslt", [](uintptr_t dH_ptr,
-                                      uintptr_t W_ptr,
-                                      uintptr_t dX_out_ptr,
-                                      uintptr_t offs_pad_ptr,
-                                      int E, int H, int Dff,
-                                      float beta,
-                                      py::object stream) {
-    auto err = bf16_dgrad_w13_cublaslt(reinterpret_cast<const void*>(dH_ptr),
-                                       reinterpret_cast<const void*>(W_ptr),
-                                       reinterpret_cast<void*>(dX_out_ptr),
-                                       reinterpret_cast<const int32_t*>(offs_pad_ptr),
-                                       E, H, Dff,
-                                       beta,
-                                       to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("bf16_dgrad_w13_cublaslt failed");
-  }, py::arg("dH"),
-     py::arg("W"),
-     py::arg("dX_out"),
-     py::arg("offs_pad"),
-     py::arg("E"), py::arg("H"), py::arg("Dff"),
-     py::arg("beta"),
-     py::arg("stream") = py::none(),
-     "Grouped BF16 dgrad via cuBLASLt: dX = dH @ W^T (beta controls accumulation)");
-
-  m.def("bf16_dgrad_w2_cublas_grouped", [](uintptr_t dY_ptr,
-                                           uintptr_t dA_out_ptr,
-                                           uintptr_t W2_ptr,
-                                           uintptr_t offs_pad_ptr,
-                                           int E, int H, int Dff,
-                                           py::object stream) {
-    auto err = bf16_dgrad_w2_cublas_grouped(reinterpret_cast<const void*>(dY_ptr),
-                                            reinterpret_cast<void*>(dA_out_ptr),
-                                            reinterpret_cast<const void*>(W2_ptr),
-                                            reinterpret_cast<const int32_t*>(offs_pad_ptr),
-                                            E, H, Dff,
-                                            to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("bf16_dgrad_w2_cublas_grouped failed");
-  }, py::arg("dY"),
-     py::arg("dA_out"),
-     py::arg("W2"),
-     py::arg("offs_pad"),
-     py::arg("E"), py::arg("H"), py::arg("Dff"),
-     py::arg("stream") = py::none(),
-     "Grouped BF16 dgrad for W2 via cuBLAS grouped-batched: dA = dY @ W2^T (FP32 accum)");
-
-  m.def("bf16_wgrad_w2_cublas_grouped", [](uintptr_t A_ptr,
-                                           uintptr_t dY_ptr,
-                                           uintptr_t dW2_out_ptr,
-                                           uintptr_t offs_pad_ptr,
-                                           int E, int H, int Dff,
-                                           py::object stream) {
-    auto err = bf16_wgrad_w2_cublas_grouped(reinterpret_cast<const void*>(A_ptr),
-                                            reinterpret_cast<const void*>(dY_ptr),
-                                            reinterpret_cast<void*>(dW2_out_ptr),
-                                            reinterpret_cast<const int32_t*>(offs_pad_ptr),
-                                            E, H, Dff,
-                                            to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("bf16_wgrad_w2_cublas_grouped failed");
-  }, py::arg("A"),
-     py::arg("dY"),
-     py::arg("dW2_out"),
-     py::arg("offs_pad"),
-     py::arg("E"), py::arg("H"), py::arg("Dff"),
-     py::arg("stream") = py::none(),
-     "Grouped BF16 wgrad for W2 via cuBLAS grouped-batched: dW2 = A^T @ dY (FP32 accum)");
-
-  m.def("bf16_wgrad_w13_cublas_grouped", [](uintptr_t X_ptr,
-                                            uintptr_t dH_ptr,
-                                            uintptr_t dW_out_ptr,
-                                            uintptr_t offs_pad_ptr,
-                                            int E, int H, int Dff,
-                                            py::object stream) {
-    auto err = bf16_wgrad_w13_cublas_grouped(reinterpret_cast<const void*>(X_ptr),
-                                             reinterpret_cast<const void*>(dH_ptr),
-                                             reinterpret_cast<void*>(dW_out_ptr),
-                                             reinterpret_cast<const int32_t*>(offs_pad_ptr),
-                                             E, H, Dff,
-                                             to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("bf16_wgrad_w13_cublas_grouped failed");
-  }, py::arg("X"),
-     py::arg("dH"),
-     py::arg("dW_out"),
-     py::arg("offs_pad"),
-     py::arg("E"), py::arg("H"), py::arg("Dff"),
-     py::arg("stream") = py::none(),
-     "Grouped BF16 wgrad via cuBLAS grouped-batched: dW = X^T @ dH (FP32 accum)");
-
-  m.def("bf16_dgrad_w13_cublas_grouped", [](uintptr_t dH_ptr,
-                                            uintptr_t W_ptr,
-                                            uintptr_t dX_out_ptr,
-                                            uintptr_t offs_pad_ptr,
-                                            int E, int H, int Dff,
-                                            float beta,
-                                            py::object stream) {
-    auto err = bf16_dgrad_w13_cublas_grouped(reinterpret_cast<const void*>(dH_ptr),
-                                             reinterpret_cast<const void*>(W_ptr),
-                                             reinterpret_cast<void*>(dX_out_ptr),
-                                             reinterpret_cast<const int32_t*>(offs_pad_ptr),
-                                             E, H, Dff,
-                                             beta,
-                                             to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("bf16_dgrad_w13_cublas_grouped failed");
-  }, py::arg("dH"),
-     py::arg("W"),
-     py::arg("dX_out"),
-     py::arg("offs_pad"),
-     py::arg("E"), py::arg("H"), py::arg("Dff"),
-     py::arg("beta"),
-     py::arg("stream") = py::none(),
-     "Grouped BF16 dgrad via cuBLAS grouped-batched: dX = dH @ W^T (beta controls accumulation)");
-
-  m.def("swiglu_quant_fp8", [](uintptr_t h13_ptr, int ld_h13,
-                               uintptr_t out_ptr, int ld_out,
-                               uintptr_t sfa_ptr, int ld_sf,
-                               int M, int K, py::object stream) {
-    auto err = swiglu_quant_fp8(reinterpret_cast<const void*>(h13_ptr), ld_h13,
-                                reinterpret_cast<void*>(out_ptr), ld_out,
-                                reinterpret_cast<void*>(sfa_ptr), ld_sf,
-                                M, K, to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("swiglu_quant_fp8 failed");
-  }, py::arg("h13"), py::arg("ld_h13"),
-     py::arg("out"), py::arg("ld_out"),
-     py::arg("sfa"), py::arg("ld_sf"),
-     py::arg("M"), py::arg("K"),
-     py::arg("stream") = py::none(),
-     "Fused SwiGLU + FP8 quantization (packed u16) with rowwise SFA (sf_vec=32)");
-
-  m.def("swiglu_quant_nvfp4", [](uintptr_t h13_ptr, int ld_h13,
-                                 uintptr_t out_ptr, int ld_out,
-                                 uintptr_t sfa_ptr, int ld_sf,
-                                 int M, int K, py::object stream) {
-    auto err = swiglu_quant_nvfp4(reinterpret_cast<const void*>(h13_ptr), ld_h13,
-                                  reinterpret_cast<void*>(out_ptr), ld_out,
-                                  reinterpret_cast<void*>(sfa_ptr), ld_sf,
-                                  M, K, to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("swiglu_quant_nvfp4 failed");
-  }, py::arg("h13"), py::arg("ld_h13"),
-     py::arg("out"), py::arg("ld_out"),
-     py::arg("sfa"), py::arg("ld_sf"),
-     py::arg("M"), py::arg("K"),
-     py::arg("stream") = py::none(),
-     "Fused SwiGLU + NVFP4 quantization (packed u16) with rowwise SFA (sf_vec=32)");
 
   m.def("swiglu_quant_fp8_sf_strided_mma", [](uintptr_t h13_ptr, int ld_h13,
                                               uintptr_t out_ptr, int ld_out,
@@ -1167,142 +714,6 @@ PYBIND11_MODULE(rdep, m) {
      py::arg("stream") = py::none(),
      "BF16 -> NVFP4 using provided SFA (rowwise, sf_vec=32)");
 
-  // NVFP4 -> BF16 dequantization (dense helper)
-  m.def("dequant_nvfp4_to_bf16", [](uintptr_t q_ptr, int ldq,
-                                     uintptr_t sfa_ptr, int ld_sf,
-                                     int M, int K,
-                                     uintptr_t out_ptr, int ldo,
-                                     py::object stream) {
-    auto err = dequant_nvfp4_to_bf16(
-        reinterpret_cast<const void*>(q_ptr), ldq,
-        reinterpret_cast<const void*>(sfa_ptr), ld_sf,
-        M, K,
-        reinterpret_cast<void*>(out_ptr), ldo,
-        to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("dequant_nvfp4_to_bf16 failed");
-  }, py::arg("q"), py::arg("ldq"),
-     py::arg("sfa"), py::arg("ld_sf"),
-     py::arg("M"), py::arg("K"),
-     py::arg("out"), py::arg("ld_out"),
-     py::arg("stream") = py::none(),
-     "NVFP4 (packed u16) + SFA (E8M0, per-32) -> BF16");
-
-  // NVFP4: expand nibble-packed to one-code-per-byte (for CuTe Float4E2M1FN)
-  m.def("unpack_nvfp4_to_bytes", [](uintptr_t q_ptr, int ldq,
-                                     uintptr_t out_ptr, int ld_bytes,
-                                     int M, int K,
-                                     py::object stream) {
-    auto err = unpack_nvfp4_to_bytes(
-        reinterpret_cast<const void*>(q_ptr), ldq,
-        reinterpret_cast<void*>(out_ptr), ld_bytes,
-        M, K, to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("unpack_nvfp4_to_bytes failed");
-  }, py::arg("q"), py::arg("ldq"), py::arg("out_bytes"), py::arg("ld_bytes"),
-     py::arg("M"), py::arg("K"), py::arg("stream") = py::none(),
-     "NVFP4 nibble-packed u16 -> bytes [M,K] (low nibble per byte)");
-
-  // Debug: variant reorder for NVFP4 unpack
-  m.def("unpack_nvfp4_to_bytes_variant", [](uintptr_t q_ptr, int ldq,
-                                             uintptr_t out_ptr, int ld_bytes,
-                                             int M, int K, int variant,
-                                             py::object stream) {
-    auto err = unpack_nvfp4_to_bytes_variant(
-        reinterpret_cast<const void*>(q_ptr), ldq,
-        reinterpret_cast<void*>(out_ptr), ld_bytes,
-        M, K, variant, to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("unpack_nvfp4_to_bytes_variant failed");
-  }, py::arg("q"), py::arg("ldq"), py::arg("out_bytes"), py::arg("ld_bytes"),
-     py::arg("M"), py::arg("K"), py::arg("variant"), py::arg("stream") = py::none(),
-     "NVFP4 nibble-packed u16 -> bytes [M,K] with nibble reordering variant");
-
-  // NVFP4 dense repack using 32-lane LUT
-  m.def("repack_nvfp4_dense_perm", [](uintptr_t in_ptr, int ldi_bytes,
-                                       uintptr_t out_ptr, int ldo_bytes,
-                                       uintptr_t perm32_ptr,
-                                       int M, int K, py::object stream) {
-    auto err = repack_nvfp4_dense_perm(reinterpret_cast<const void*>(in_ptr), ldi_bytes,
-                                       reinterpret_cast<void*>(out_ptr), ldo_bytes,
-                                       reinterpret_cast<const void*>(perm32_ptr),
-                                       M, K, to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("repack_nvfp4_dense_perm failed");
-  }, py::arg("in_u8"), py::arg("ldi_bytes"), py::arg("out_u8"), py::arg("ldo_bytes"),
-     py::arg("perm32"), py::arg("M"), py::arg("K"), py::arg("stream") = py::none());
-
-  // Dense NVFP4 SF swizzle (rowwise)
-  m.def("swizzle_sf_mkl_to_mma_dense_nvfp4", [](uintptr_t sf_mkl, uintptr_t sf_mma,
-                                                 int M, int sf_k, py::object stream) {
-    auto err = swizzle_sf_dense_nvfp4(reinterpret_cast<const void*>(sf_mkl),
-                                      reinterpret_cast<void*>(sf_mma),
-                                      M, sf_k, to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("swizzle_sf_mkl_to_mma_dense_nvfp4 failed");
-  }, py::arg("sf_mkl"), py::arg("sf_mma"), py::arg("M"), py::arg("sf_k"), py::arg("stream") = py::none());
-
-  // Fused dense GEMM: (NVFP4,SFA) x (BF16 W) -> BF16 Y
-  m.def("fused_dense_nvfp4_gemm_bf16", [](uintptr_t Aq_ptr, int ldq,
-                                           uintptr_t sfa_ptr, int ld_sf,
-                                           uintptr_t w_ptr, int ldw,
-                                           uintptr_t bias_ptr,
-                                           uintptr_t y_ptr, int ldy,
-                                           int M, int N, int K,
-                                           py::object stream) {
-    auto err = fused_dense_nvfp4_gemm_bf16(
-        reinterpret_cast<const void*>(Aq_ptr), ldq,
-        reinterpret_cast<const void*>(sfa_ptr), ld_sf,
-        reinterpret_cast<const void*>(w_ptr), ldw,
-        reinterpret_cast<const void*>(bias_ptr),
-        reinterpret_cast<void*>(y_ptr), ldy,
-        M, N, K, to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("fused_dense_nvfp4_gemm_bf16 failed");
-  }, py::arg("A_q"), py::arg("ldq"),
-     py::arg("sfa"), py::arg("ld_sf"),
-     py::arg("W"), py::arg("ldw"),
-     py::arg("bias"),
-     py::arg("Y"), py::arg("ld_out"),
-     py::arg("M"), py::arg("N"), py::arg("K"),
-     py::arg("stream") = py::none(),
-     "Fused dense GEMM: (NVFP4 A + per-32 SFA) x (BF16 W) -> BF16 Y");
-
-  // Fused dense GEMM with on-the-fly quantization: (BF16 A) ->NVFP4-> x (BF16 W) -> BF16 Y
-  m.def("fused_dense_quant_nvfp4_gemm_bf16", [](uintptr_t a_ptr, int lda,
-                                                 uintptr_t w_ptr, int ldw,
-                                                 uintptr_t bias_ptr,
-                                                 uintptr_t y_ptr, int ldy,
-                                                 int M, int N, int K,
-                                                 py::object stream) {
-    auto err = fused_dense_quant_nvfp4_gemm_bf16(
-        reinterpret_cast<const void*>(a_ptr), lda,
-        reinterpret_cast<const void*>(w_ptr), ldw,
-        reinterpret_cast<const void*>(bias_ptr),
-        reinterpret_cast<void*>(y_ptr), ldy,
-        M, N, K, to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("fused_dense_quant_nvfp4_gemm_bf16 failed");
-  }, py::arg("A"), py::arg("ldA"),
-     py::arg("W"), py::arg("ldW"),
-     py::arg("bias"),
-     py::arg("Y"), py::arg("ld_out"),
-     py::arg("M"), py::arg("N"), py::arg("K"),
-     py::arg("stream") = py::none(),
-      "Fused dense GEMM: (BF16 A quantized per-32 NVFP4 on-the-fly) x (BF16 W) -> BF16 Y");
-
-  // Fused dense GEMM with on-the-fly FP8 quantization
-  m.def("fused_dense_quant_fp8_gemm_bf16", [](uintptr_t a_ptr, int lda,
-                                              uintptr_t w_ptr, int ldw,
-                                              uintptr_t bias_ptr,
-                                              uintptr_t y_ptr, int ldy,
-                                              int M, int N, int K,
-                                              py::object stream) {
-    auto err = fused_dense_quant_fp8_gemm_bf16(
-        reinterpret_cast<const void*>(a_ptr), lda,
-        reinterpret_cast<const void*>(w_ptr), ldw,
-        reinterpret_cast<const void*>(bias_ptr),
-        reinterpret_cast<void*>(y_ptr), ldy,
-        M, N, K, to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("fused_dense_quant_fp8_gemm_bf16 failed");
-  }, py::arg("A"), py::arg("ldA"), py::arg("W"), py::arg("ldW"), py::arg("bias"),
-     py::arg("Y"), py::arg("ld_out"), py::arg("M"), py::arg("N"), py::arg("K"),
-     py::arg("stream") = py::none(),
-     "Fused dense GEMM: (BF16 A quantized per-32 FP8 E4M3 on-the-fly) x (BF16 W) -> BF16 Y");
-
   m.def("swizzle_sf_mkl_to_mma", [](uintptr_t sf_mkl_ptr, uintptr_t sf_mma_ptr,
                                      int M, int sf_k, py::object stream) {
     auto err = swizzle_sf_mkl_to_mma(reinterpret_cast<const void*>(sf_mkl_ptr),
@@ -1312,35 +723,6 @@ PYBIND11_MODULE(rdep, m) {
   }, py::arg("sf_mkl"), py::arg("sf_mma"), py::arg("M"), py::arg("sf_k"),
      py::arg("stream") = py::none(),
      "Rowwise SF swizzle to MMA layout (A-side)");
-
-  // Per-expert strided SF swizzle (activation A-side, grouped strided path)
-  m.def("swizzle_sf_strided", [](uintptr_t sf_mkl_ptr, uintptr_t sf_mma_ptr,
-                                  uintptr_t offs_ptr, int E, int sf_k, int sf_k_pad,
-                                  int M_pad, int M_e_swizzle, py::object stream) {
-    auto err = swizzle_sf_strided(
-        reinterpret_cast<const void*>(sf_mkl_ptr),
-        reinterpret_cast<void*>(sf_mma_ptr),
-        reinterpret_cast<const int32_t*>(offs_ptr),
-        E, sf_k, sf_k_pad, M_pad, M_e_swizzle, to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("swizzle_sf_strided failed");
-  }, py::arg("sf_mkl"), py::arg("sf_mma"), py::arg("offs"),
-     py::arg("E"), py::arg("sf_k"), py::arg("sf_k_pad"), py::arg("M_pad"), py::arg("M_e_swizzle"),
-     py::arg("stream") = py::none(),
-     "Per-expert strided swizzle to MMA layout (A-side)");
-
-  m.def("unswizzle_sf_strided", [](uintptr_t sf_mma_ptr, uintptr_t sf_mkl_ptr,
-                                   uintptr_t offs_ptr, int E, int sf_k, int sf_k_pad,
-                                   int M_pad, int M_e_swizzle, py::object stream) {
-    auto err = unswizzle_sf_strided(
-        reinterpret_cast<const void*>(sf_mma_ptr),
-        reinterpret_cast<void*>(sf_mkl_ptr),
-        reinterpret_cast<const int32_t*>(offs_ptr),
-        E, sf_k, sf_k_pad, M_pad, M_e_swizzle, to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("unswizzle_sf_strided failed");
-  }, py::arg("sf_mma"), py::arg("sf_mkl"), py::arg("offs"),
-     py::arg("E"), py::arg("sf_k"), py::arg("sf_k_pad"), py::arg("M_pad"), py::arg("M_e_swizzle"),
-     py::arg("stream") = py::none(),
-     "Per-expert strided unswizzle from MMA layout to row-major (A-side)");
 
   // Build grouped GEMM metadata (GPU) for strided grouped interface
   m.def("build_grouped_gemm_metadata", [](uintptr_t offs_ptr, int E,
@@ -1387,25 +769,6 @@ PYBIND11_MODULE(rdep, m) {
      py::arg("ptrs_abc"), py::arg("ptrs_sfasfb"),
      py::arg("stream") = py::none(),
      "Build grouped GEMM metadata on GPU for strided grouped interface");
-
-  // Grouped dense GEMM (skeleton): iterate experts and call fused dense
-  m.def("grouped_dense_nvfp4_gemm_bf16_strided", [](uintptr_t sizes_ptr,
-                                                     uintptr_t strides_ptr,
-                                                     uintptr_t ptrs_abc_ptr,
-                                                     uintptr_t ptrs_sfasfb_ptr,
-                                                     int E, int sf_k,
-                                                     py::object stream) {
-    auto err = grouped_dense_nvfp4_gemm_bf16_strided(
-        reinterpret_cast<const int32_t*>(sizes_ptr),
-        reinterpret_cast<const int32_t*>(strides_ptr),
-        reinterpret_cast<const int64_t*>(ptrs_abc_ptr),
-        reinterpret_cast<const int64_t*>(ptrs_sfasfb_ptr),
-        E, sf_k, to_stream(stream));
-    if (err != cudaSuccess) throw std::runtime_error("grouped_dense_nvfp4_gemm_bf16_strided failed");
-  }, py::arg("sizes_mnkl"), py::arg("strides_abc"),
-     py::arg("ptrs_abc"), py::arg("ptrs_sfasfb"),
-     py::arg("E"), py::arg("sf_k"), py::arg("stream") = py::none(),
-     "Grouped dense GEMM (NVFP4 A + per-32 SFA) using per-expert pointers and strides");
 
 #ifdef WITH_NVSHMEM
   // ========== NVSHMEM Functions ==========

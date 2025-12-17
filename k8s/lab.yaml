@@ -1,0 +1,134 @@
+# Jupyter Lab research environment
+#
+# Usage:
+#   kubectl apply -f k8s/lab.yaml
+#   # Access via: https://lab.your-cluster.example.com
+#
+# Best practices (2025):
+#   - GPU specified in limits only (k8s GPU scheduling requirement)
+#   - Auth handled at ingress layer (Jupyter token disabled)
+#   - Privileged for ncu/nsys profiling access
+#   - Persistent workspace via PVC
+#
+# References:
+#   - https://z2jh.jupyter.org/en/stable/administrator/security.html
+#   - https://collabnix.com/kubernetes-gpu-resource-management-best-practices-complete-technical-guide-for-2025/
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nmoe-lab
+  labels:
+    app: nmoe
+    role: lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nmoe
+      role: lab
+  template:
+    metadata:
+      labels:
+        app: nmoe
+        role: lab
+    spec:
+      runtimeClassName: nvidia
+      tolerations:
+        - key: nvidia.com/gpu
+          value: "true"
+          effect: NoSchedule
+      containers:
+        - name: lab
+          image: xjdr/nmoe_lab:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8888
+              name: http
+          env:
+            - name: PYTORCH_CUDA_ALLOC_CONF
+              value: "expandable_segments:True"
+            - name: HF_HOME
+              value: "/data/hf_cache"
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - SYS_ADMIN
+                - SYS_PTRACE
+          resources:
+            limits:
+              nvidia.com/gpu: 8
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: dshm
+              mountPath: /dev/shm
+          livenessProbe:
+            httpGet:
+              path: /api
+              port: 8888
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api
+              port: 8888
+            initialDelaySeconds: 10
+            timeoutSeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: nmoe-data
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nmoe-lab
+  labels:
+    app: nmoe
+    role: lab
+spec:
+  type: ClusterIP
+  selector:
+    app: nmoe
+    role: lab
+  ports:
+    - port: 80
+      targetPort: 8888
+      name: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nmoe-lab
+  labels:
+    app: nmoe
+    role: lab
+  annotations:
+    # Enable gzip for large JSON responses (settings API is 132KB)
+    nginx.ingress.kubernetes.io/enable-gzip: "true"
+    nginx.ingress.kubernetes.io/gzip-min-length: "1000"
+    nginx.ingress.kubernetes.io/gzip-types: "application/json text/plain application/javascript text/css"
+spec:
+  ingressClassName: nginx-public
+  rules:
+    - host: lab.your-cluster.example.com  # Replace with your cluster domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nmoe-lab
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - lab.your-cluster.example.com  # Replace with your cluster domain

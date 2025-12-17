@@ -249,45 +249,7 @@ cudaError_t lt_gemm_bf16_f32accum(
 }
  
 }  // namespace
- 
-extern "C" cudaError_t bf16_dgrad_w2_cublaslt(const void* dY,
-                                             void* dA_out,
-                                             const void* W2,
-                                             const int32_t* offs_pad,
-                                             int E,
-                                             int H,
-                                             int Dff,
-                                             cudaStream_t stream) {
-  if (E <= 0 || H <= 0 || Dff <= 0) return cudaSuccess;
- 
-  const auto* dY_bf16 = reinterpret_cast<const __nv_bfloat16*>(dY);
-  auto* dA_bf16 = reinterpret_cast<__nv_bfloat16*>(dA_out);
-  const auto* W2_bf16 = reinterpret_cast<const __nv_bfloat16*>(W2);
- 
-  const int lda = H;
-  const int ldb = H;    // W2 stored as [Dff, H] row-major
-  const int ldc = Dff;
- 
-  int32_t start = 0;
-  for (int e = 0; e < E; ++e) {
-    const int32_t end = offs_pad[e];
-    const int m = static_cast<int>(end - start);
-    if (m > 0) {
-      const __nv_bfloat16* A = dY_bf16 + static_cast<size_t>(start) * static_cast<size_t>(lda);
-      const __nv_bfloat16* B = W2_bf16 + static_cast<size_t>(e) * static_cast<size_t>(Dff) * static_cast<size_t>(H);
-      __nv_bfloat16* C = dA_bf16 + static_cast<size_t>(start) * static_cast<size_t>(ldc);
-      auto err = lt_gemm_bf16_f32accum(A, CUBLAS_OP_N, B, CUBLAS_OP_T, C,
-                                  m, Dff, H,
-                                  lda, ldb, ldc,
-                                  /*alpha=*/1.0f, /*beta=*/0.0f,
-                                  stream);
-      if (err != cudaSuccess) return err;
-    }
-    start = end;
-  }
-  return cudaSuccess;
-}
- 
+
 extern "C" cudaError_t bf16_wgrad_w2_cublaslt(const void* A,
                                              const void* dY,
                                              void* dW2_out,
@@ -367,45 +329,6 @@ extern "C" cudaError_t bf16_wgrad_w13_cublaslt(const void* X,
     } else {
       // Expert has zero tokens: ensure its gradient slice is exactly zero.
       auto err = cudaMemsetAsync(dWe, 0, static_cast<size_t>(H) * static_cast<size_t>(Dff) * sizeof(__nv_bfloat16), stream);
-      if (err != cudaSuccess) return err;
-    }
-    start = end;
-  }
-  return cudaSuccess;
-}
- 
-extern "C" cudaError_t bf16_dgrad_w13_cublaslt(const void* dH,
-                                              const void* W,
-                                              void* dX_out,
-                                              const int32_t* offs_pad,
-                                              int E,
-                                              int H,
-                                              int Dff,
-                                              float beta,
-                                              cudaStream_t stream) {
-  if (E <= 0 || H <= 0 || Dff <= 0) return cudaSuccess;
- 
-  const auto* dH_bf16 = reinterpret_cast<const __nv_bfloat16*>(dH);
-  const auto* W_bf16 = reinterpret_cast<const __nv_bfloat16*>(W);
-  auto* dX_bf16 = reinterpret_cast<__nv_bfloat16*>(dX_out);
-
-  const int lda = Dff;  // dH [m, Dff]
-  const int ldb = Dff;  // W [H, Dff]
-  const int ldc = H;    // dX [m, H]
- 
-  int32_t start = 0;
-  for (int e = 0; e < E; ++e) {
-    const int32_t end = offs_pad[e];
-    const int m = static_cast<int>(end - start);
-    if (m > 0) {
-      const __nv_bfloat16* dHe = dH_bf16 + static_cast<size_t>(start) * static_cast<size_t>(lda);
-      const __nv_bfloat16* We = W_bf16 + static_cast<size_t>(e) * static_cast<size_t>(H) * static_cast<size_t>(Dff);
-      __nv_bfloat16* dXe = dX_bf16 + static_cast<size_t>(start) * static_cast<size_t>(ldc);
-      auto err = lt_gemm_bf16_f32accum(dHe, CUBLAS_OP_N, We, CUBLAS_OP_T, dXe,
-                                  /*m=*/m, /*n=*/H, /*k=*/Dff,
-                                  /*lda=*/lda, /*ldb=*/ldb, /*ldc=*/ldc,
-                                  /*alpha=*/1.0f, /*beta=*/beta,
-                                  stream);
       if (err != cudaSuccess) return err;
     }
     start = end;

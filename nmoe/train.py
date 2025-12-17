@@ -18,7 +18,6 @@ from contextlib import nullcontext
 
 import torch
 import torch.nn.functional as F
-import torch.distributed as dist
 
 from nmoe.config import Config, fingerprint
 from nmoe.model import Transformer

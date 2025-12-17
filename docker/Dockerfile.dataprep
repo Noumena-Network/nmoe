@@ -9,7 +9,6 @@ WORKDIR /workspace/nmoe
 # Copy source (configs + python package)
 COPY nmoe /workspace/nmoe/nmoe
 COPY configs /workspace/nmoe/configs
-COPY pipeline.py /workspace/nmoe/pipeline.py
 
 # Ensure project is importable
 ENV PYTHONPATH=/workspace/nmoe:/workspace/nmoe/triton/python/triton_kernels

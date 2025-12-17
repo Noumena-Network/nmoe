@@ -5,16 +5,16 @@ service:
   nodeHttpPort: 30080
   nodeTurnPort: 30478
 
-webUsername: nvidia
-webPassword: nvidia
+webUsername: admin  # Change before deployment
+webPassword: changeme  # Change before deployment
 
 # Pin to a node with a routable ExternalIP and keep HOST_IP stable for TURN.
 nodeSelector:
-  kubernetes.io/hostname: noumena01-cpu-02
+  kubernetes.io/hostname: your-gpu-node  # Replace with your node name
 
 env:
   - name: HOST_IP
-    value: "192.222.55.227"
+    value: "YOUR_NODE_IP"  # Replace with your node's external IP
   # Allow the Nsight Systems UI (inside the streamer container) to control
   # injected profiling sessions via the in-cluster coordinator (no SSH).
   - name: NSYS_FEATURE_CURVE_ENCRYPTION

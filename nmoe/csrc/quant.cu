@@ -1001,41 +1001,8 @@ inline cudaError_t launch_swiglu_quantize_nvfp4_sf_strided_mma(
 // Output: out_bytes [M, K] (each byte holds a single 4-bit FP4 code replicated
 //                            into both nibbles). Replication ensures kernels that
 //                            read the high nibble see the same value.
-__global__ void k_unpack_nvfp4_to_bytes(
-    const uint16_t* __restrict__ q_u16, int ldq,
-    uint8_t* __restrict__ out_bytes, int ldo,
-    int M, int K)
-{
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 1000)
-    const int row0 = blockIdx.x * blockDim.x + threadIdx.x;
-    const int dr = blockDim.x * gridDim.x;
-    for (int m = row0; m < M; m += dr) {
-        const uint16_t* q_row = q_u16 + static_cast<size_t>(m) * ldq;
-        uint8_t* out_row = out_bytes + static_cast<size_t>(m) * ldo;
-        for (int k0 = 0; k0 < K; k0 += 4) {
-            const uint16_t packed = q_row[k0 / 4];
-            const uint8_t lo = static_cast<uint8_t>(packed & 0xFF);
-            const uint8_t hi = static_cast<uint8_t>(packed >> 8);
-            auto rep = [](uint8_t c) { uint8_t v = c & 0x0F; return static_cast<uint8_t>(v | (v << 4)); };
-            if (k0 + 0 < K) out_row[k0 + 0] = rep(static_cast<uint8_t>(lo      ));
-            if (k0 + 1 < K) out_row[k0 + 1] = rep(static_cast<uint8_t>(lo >> 4));
-            if (k0 + 2 < K) out_row[k0 + 2] = rep(static_cast<uint8_t>(hi      ));
-            if (k0 + 3 < K) out_row[k0 + 3] = rep(static_cast<uint8_t>(hi >> 4));
-        }
-    }
-#endif
-}
-
-inline cudaError_t launch_unpack_nvfp4_to_bytes(
-    const uint16_t* q_u16, int ldq,
-    uint8_t* out_bytes, int ldo,
-    int M, int K, cudaStream_t stream = 0)
-{
-    const int threads = 128;
-    const int blocks = (M + threads - 1) / threads;
-    k_unpack_nvfp4_to_bytes<<<blocks, threads, 0, stream>>>(q_u16, ldq, out_bytes, ldo, M, K);
-    return cudaGetLastError();
-}
+// NOTE: Removed legacy unpack helpers. NVFP4 decode should stay inside the
+// blockscaled kernels or dedicated debug tooling, not the production extension surface.
 
 // ============================================================================
 // NVFP4 dense: nibble-wise repack within 32-lane blocks using a 32-entry LUT
@@ -1095,73 +1062,6 @@ inline cudaError_t launch_repack_nvfp4_dense_perm(
     const int threads = 128;
     const int blocks = (M + threads - 1) / threads;
     k_repack_nvfp4_dense_perm<<<blocks, threads, 0, stream>>>(in_u8, ldi_bytes, out_u8, ldo_bytes, perm32, M, K);
-    return cudaGetLastError();
-}
-
-// Debug variant: try different nibble reorderings for compatibility testing
-__global__ void k_unpack_nvfp4_to_bytes_variant(
-    const uint16_t* __restrict__ q_u16, int ldq,
-    uint8_t* __restrict__ out_bytes, int ldo,
-    int M, int K, int variant)
-{
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 1000)
-    const int row0 = blockIdx.x * blockDim.x + threadIdx.x;
-    const int dr = blockDim.x * gridDim.x;
-    for (int m = row0; m < M; m += dr) {
-        const uint16_t* q_row = q_u16 + static_cast<size_t>(m) * ldq;
-        uint8_t* out_row = out_bytes + static_cast<size_t>(m) * ldo;
-        for (int k0 = 0; k0 < K; k0 += 4) {
-            const uint16_t packed = q_row[k0 / 4];
-            const uint8_t lo = static_cast<uint8_t>(packed & 0xFF);
-            const uint8_t hi = static_cast<uint8_t>(packed >> 8);
-            uint8_t c0 = static_cast<uint8_t>(lo & 0x0F);
-            uint8_t c1 = static_cast<uint8_t>((lo >> 4) & 0x0F);
-            uint8_t c2 = static_cast<uint8_t>(hi & 0x0F);
-            uint8_t c3 = static_cast<uint8_t>((hi >> 4) & 0x0F);
-            uint8_t o0=c0, o1=c1, o2=c2, o3=c3;
-            // Lower 2 bits select nibble reorder within the 16-bit packed pair
-            switch (variant & 3) {
-              case 1: o0=c1; o1=c0; o2=c3; o3=c2; break;           // swap within pairs
-              case 2: o0=c2; o1=c3; o2=c0; o3=c1; break;           // swap bytes
-              case 3: o0=c3; o1=c2; o2=c1; o3=c0; break;           // reverse
-              default: break; // identity
-            }
-            // Bit 2: replicate nibble into both halves (code -> code*0x11)
-            // Bit 3: place nibble into high-half only (code << 4)
-            if (variant & 0x4) {
-                o0 = (o0 & 0xF) * 0x11;
-                o1 = (o1 & 0xF) * 0x11;
-                o2 = (o2 & 0xF) * 0x11;
-                o3 = (o3 & 0xF) * 0x11;
-            } else if (variant & 0x8) {
-                o0 = (o0 & 0xF) << 4;
-                o1 = (o1 & 0xF) << 4;
-                o2 = (o2 & 0xF) << 4;
-                o3 = (o3 & 0xF) << 4;
-            } else {
-                // Default: keep nibble in low half, zero high
-                o0 = (o0 & 0xF);
-                o1 = (o1 & 0xF);
-                o2 = (o2 & 0xF);
-                o3 = (o3 & 0xF);
-            }
-            if (k0 + 0 < K) out_row[k0 + 0] = o0;
-            if (k0 + 1 < K) out_row[k0 + 1] = o1;
-            if (k0 + 2 < K) out_row[k0 + 2] = o2;
-            if (k0 + 3 < K) out_row[k0 + 3] = o3;
-        }
-    }
-#endif
-}
-
-inline cudaError_t launch_unpack_nvfp4_to_bytes_variant(
-    const uint16_t* q_u16, int ldq,
-    uint8_t* out_bytes, int ldo,
-    int M, int K, int variant, cudaStream_t stream = 0)
-{
-    const int threads = 128;
-    const int blocks = (M + threads - 1) / threads;
-    k_unpack_nvfp4_to_bytes_variant<<<blocks, threads, 0, stream>>>(q_u16, ldq, out_bytes, ldo, M, K, variant);
     return cudaGetLastError();
 }
 // ============================================================================
@@ -1303,160 +1203,8 @@ inline cudaError_t launch_quantize_nvfp4_with_sfa(
 // Output:
 //   out_q_pad: [M_pad, Hp] uint16 packed quantized activations
 //   out_sf_pad: [M_pad, Hsf] uint8 E8M0 scale factors
-
-__global__ void k_dispatch_quant_fp8(
-    const __nv_bfloat16* __restrict__ x_sorted, int H,
-    const int* __restrict__ dest,
-    uint16_t* __restrict__ out_q_pad, int ldp,
-    uint8_t* __restrict__ out_sf_pad, int ld_sf,
-    int M)
-{
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 1000)
-    // Each thread handles one row
-    const int row = blockIdx.x * blockDim.x + threadIdx.x;
-    if (row >= M) return;
-
-    const int dst_row = dest[row];
-    const __nv_bfloat16* x_row = x_sorted + static_cast<size_t>(row) * H;
-    uint16_t* out_row = out_q_pad + static_cast<size_t>(dst_row) * ldp;
-    uint8_t* sf_row = out_sf_pad + static_cast<size_t>(dst_row) * ld_sf;
-
-    // Process in chunks of SF_VEC_FP8 (32 elements)
-    for (int k0 = 0; k0 < H; k0 += SF_VEC_FP8) {
-        const int span = min(SF_VEC_FP8, H - k0);
-        const int sf_idx = k0 / SF_VEC_FP8;
-
-        // Pass 1: Compute tile amax
-        float amax = 0.0f;
-        #pragma unroll
-        for (int i = 0; i < SF_VEC_FP8; ++i) {
-            if (i >= span) break;
-            float v = __bfloat162float(x_row[k0 + i]);
-            amax = fmaxf(amax, fabsf(v));
-        }
-
-        // Compute and store E8M0 scale
-        float scale = amax / FP8_MAX;
-        if (!(scale > 0.0f)) scale = 1.0f;
-        uint8_t scale_byte = ptx::e8m0_encode_from_pos_f32(scale);
-        sf_row[sf_idx] = scale_byte;
-
-        // Pass 2: Quantize and pack
-        const float inv_scale = ptx::e8m0_inv_decode_to_f32(scale_byte);
-
-        #pragma unroll
-        for (int i = 0; i < SF_VEC_FP8 / 2; ++i) {
-            const int c0 = 2 * i;
-            const int c1 = c0 + 1;
-            if (c0 >= span) break;
-
-            float v0 = __bfloat162float(x_row[k0 + c0]) * inv_scale;
-            uint8_t b0 = ptx::f32_to_e4m3_byte(v0);
-
-            uint8_t b1 = 0;
-            if (c1 < span) {
-                float v1 = __bfloat162float(x_row[k0 + c1]) * inv_scale;
-                b1 = ptx::f32_to_e4m3_byte(v1);
-            }
-
-            out_row[(k0 + c0) / 2] = ptx::pack2_u8_to_u16(b0, b1);
-        }
-    }
-#endif
-}
-
-  inline cudaError_t launch_dispatch_quant_fp8(
-      const __nv_bfloat16* x_sorted, int H,
-      const int* dest,
-      uint16_t* out_q_pad, int ldp,
-      uint8_t* out_sf_pad, int ld_sf,
-      int M,
-      cudaStream_t stream = 0)
-  {
-      const int threads = 256;
-      const int blocks = (M + threads - 1) / threads;
-      k_dispatch_quant_fp8<<<blocks, threads, 0, stream>>>(
-          x_sorted, H, dest, out_q_pad, ldp, out_sf_pad, ld_sf, M);
-      return cudaGetLastError();
-  }
-
-  // ============================================================================
-  // Fused Dispatch + Quantize Kernel (Single-GPU) — NVFP4
-  // Output:
-  //   out_q_pad [M_pad, H/4] uint16 (4 nibbles per u16)
-  //   out_sf_pad [M_pad, ceil(H/32)] uint8 (E8M0 per 32 BF16)
-  // ============================================================================
-  __global__ void k_dispatch_quant_nvfp4(
-      const __nv_bfloat16* __restrict__ x_sorted, int H,
-      const int* __restrict__ dest,
-      uint16_t* __restrict__ out_q_pad, int ldp,
-      uint8_t* __restrict__ out_sf_pad, int ld_sf,
-      int M)
-  {
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 1000)
-#if NMOE_ENABLE_PTX_E2M1
-      const int row = blockIdx.x * blockDim.x + threadIdx.x;
-      if (row >= M) return;
-
-      const int dst_row = dest[row];
-      const __nv_bfloat16* x_row = x_sorted + static_cast<size_t>(row) * H;
-      uint16_t* out_row = out_q_pad + static_cast<size_t>(dst_row) * ldp;
-      uint8_t* sf_row = out_sf_pad + static_cast<size_t>(dst_row) * ld_sf;
-
-      // Process in blocks of 32 BF16 (SF_VEC_FP4)
-      for (int k0 = 0; k0 < H; k0 += SF_VEC_FP4) {
-          const int span = min(SF_VEC_FP4, H - k0);
-          const int sf_idx = k0 / SF_VEC_FP4;
-
-          float amax = 0.0f;
-#pragma unroll
-          for (int i = 0; i < SF_VEC_FP4; ++i) {
-              if (i >= span) break;
-              float v = __bfloat162float(x_row[k0 + i]);
-              amax = fmaxf(amax, fabsf(v));
-          }
-
-          float scale = amax / FP4_MAX;
-          if (!(scale > 0.0f)) scale = 1.0f;
-          uint8_t scale_byte = ptx::e8m0_encode_from_pos_f32(scale);
-          sf_row[sf_idx] = scale_byte;
-
-          const float inv_scale = ptx::e8m0_inv_decode_to_f32(scale_byte);
-
-#pragma unroll
-          for (int i = 0; i < SF_VEC_FP4 / 4; ++i) {
-              const int c = 4 * i;
-              if (c >= span) break;
-              float v0 = __bfloat162float(x_row[k0 + c + 0]) * inv_scale;
-              float v1 = (c + 1 < span) ? __bfloat162float(x_row[k0 + c + 1]) * inv_scale : 0.0f;
-              float v2 = (c + 2 < span) ? __bfloat162float(x_row[k0 + c + 2]) * inv_scale : 0.0f;
-              float v3 = (c + 3 < span) ? __bfloat162float(x_row[k0 + c + 3]) * inv_scale : 0.0f;
-              out_row[(k0 + c) / 4] = ptx::f32x4_to_e2m1x4_packed(v0, v1, v2, v3);
-          }
-      }
-#endif
-#endif
-  }
-
-  inline cudaError_t launch_dispatch_quant_nvfp4(
-      const __nv_bfloat16* x_sorted, int H,
-      const int* dest,
-      uint16_t* out_q_pad, int ldp,
-      uint8_t* out_sf_pad, int ld_sf,
-      int M,
-      cudaStream_t stream = 0)
-  {
-#if NMOE_ENABLE_PTX_E2M1
-      const int threads = 256;
-      const int blocks = (M + threads - 1) / threads;
-      k_dispatch_quant_nvfp4<<<blocks, threads, 0, stream>>>(
-          x_sorted, H, dest, out_q_pad, ldp, out_sf_pad, ld_sf, M);
-      return cudaGetLastError();
-#else
-      (void)x_sorted; (void)H; (void)dest; (void)out_q_pad; (void)ldp; (void)out_sf_pad; (void)ld_sf; (void)M; (void)stream;
-      return cudaErrorNotSupported;
-#endif
-  }
+// NOTE: Removed legacy fused dispatch+quant kernels (single-GPU convenience path).
+// The production path quantizes from the padded per-expert Xe buffer directly.
 
 // ============================================================================
 // Scale Factor Swizzle Kernel (MKL -> MMA layout)
@@ -2142,30 +1890,6 @@ extern "C" cudaError_t repack_nvfp4_dense_perm(
         M, K, stream);
 }
 
-cudaError_t unpack_nvfp4_to_bytes(
-    const void* q, int ldq,
-    void* out_bytes, int ld_bytes,
-    int M, int K,
-    cudaStream_t stream)
-{
-    return nmoe::quant::launch_unpack_nvfp4_to_bytes(
-        reinterpret_cast<const uint16_t*>(q), ldq,
-        reinterpret_cast<uint8_t*>(out_bytes), ld_bytes,
-        M, K, stream);
-}
-
-cudaError_t unpack_nvfp4_to_bytes_variant(
-    const void* q, int ldq,
-    void* out_bytes, int ld_bytes,
-    int M, int K, int variant,
-    cudaStream_t stream)
-{
-    return nmoe::quant::launch_unpack_nvfp4_to_bytes_variant(
-        reinterpret_cast<const uint16_t*>(q), ldq,
-        reinterpret_cast<uint8_t*>(out_bytes), ld_bytes,
-        M, K, variant, stream);
-}
-
 // ============================================================================
 // Fused Dense GEMM: (NVFP4 A, per-32 SFA) x (BF16 W) -> BF16 Y
 // ============================================================================
@@ -2353,37 +2077,7 @@ extern "C" cudaError_t fused_dense_quant_nvfp4_gemm_bf16(
 }
 
 // Fused dispatch + quantize for single-GPU MoE
-cudaError_t dispatch_quant_fp8(
-    const void* x_sorted, int H,
-    const int* dest,
-    void* out_q_pad, int ldp,
-    void* out_sf_pad, int ld_sf,
-    int M,
-    cudaStream_t stream)
-{
-    return nmoe::quant::launch_dispatch_quant_fp8(
-        reinterpret_cast<const __nv_bfloat16*>(x_sorted), H,
-        dest,
-        reinterpret_cast<uint16_t*>(out_q_pad), ldp,
-        reinterpret_cast<uint8_t*>(out_sf_pad), ld_sf,
-        M, stream);
-}
-
-cudaError_t dispatch_quant_nvfp4(
-    const void* x_sorted, int H,
-    const int* dest,
-    void* out_q_pad, int ldp,
-    void* out_sf_pad, int ld_sf,
-    int M,
-    cudaStream_t stream)
-{
-    return nmoe::quant::launch_dispatch_quant_nvfp4(
-        reinterpret_cast<const __nv_bfloat16*>(x_sorted), H,
-        dest,
-        reinterpret_cast<uint16_t*>(out_q_pad), ldp,
-        reinterpret_cast<uint8_t*>(out_sf_pad), ld_sf,
-        M, stream);
-}
+// NOTE: Removed legacy dispatch+quant entrypoints (single-GPU convenience path).
 
 // Swizzle scale factors from MKL (row-major) to MMA layout - rowwise (for SFA)
 cudaError_t swizzle_sf_mkl_to_mma(

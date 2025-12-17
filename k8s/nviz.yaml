@@ -76,7 +76,7 @@ metadata:
 spec:
   ingressClassName: nginx-public
   rules:
-  - host: nviz.noumena-onecc-mk8s01.clusters.gpus.com
+  - host: nviz.your-cluster.example.com  # Replace with your cluster domain
     http:
       paths:
       - path: /
@@ -88,4 +88,4 @@ spec:
               number: 80
   tls:
   - hosts:
-    - nviz.noumena-onecc-mk8s01.clusters.gpus.com
+    - nviz.your-cluster.example.com  # Replace with your cluster domain

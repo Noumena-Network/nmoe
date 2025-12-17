@@ -3,9 +3,7 @@
 Paper: DeepSeek-V3.2 Section 2.1, Equation 1:
     I_{t,s} = Σ_{j=1}^{H^I} w^I_{t,j} · ReLU(q^I_{t,j} · k^I_s)
 
-Two implementations:
-1. lightning_indexer_fused: Fused Triton kernel for small k (k <= BLOCK_N)
-2. lightning_indexer: General implementation using score computation + torch.topk
+Uses score computation kernel + torch.topk for top-k selection.
 """
 
 import torch

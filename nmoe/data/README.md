@@ -317,6 +317,8 @@ Body:
 
 ### HYDRA End‑to‑End (Automated via scripts/)
 
+**TODO(oss):** The `scripts/` automation wrappers referenced below are not included in this public release yet. Use the manual commands further down in this README.
+
 Use these one‑liners for a fully automated, resume‑safe run. Edit envs to taste; sensible defaults are baked in.
 
 Prereqs
@@ -335,35 +337,13 @@ export CKPT_120B=<path_to_120b_ckpt>      # e.g., /models/gpt-oss-120b/original/
 export CKPT_20B=<path_to_20b_ckpt>        # e.g., /models/gpt-oss-20b/original/original
 ```
 
-Stage 1 — Build docid slices (idempotent)
-```bash
-bash scripts/hydra_slices.sh
-```
+The HYDRA pipeline has five stages. See the detailed inline examples below for each stage, or create wrapper scripts for your environment.
 
-Stage 2 — Oracle labeling on 8× GPUs (streaming + resume)
-```bash
-bash scripts/hydra_oracle_8gpu.sh
-# Monitor (minimal, readable):
-bash scripts/hydra_status.sh
-```
-
-Stage 3 — Merge + Calibrate (fits weights and τ on val)
-```bash
-bash scripts/hydra_merge_calibrate.sh
-# Writes: $CAL_DIR/calibration_summary.json (configure inside the script or via env)
-```
-
-Stage 4 — Train HYDRA heads over frozen 20B
-```bash
-bash scripts/hydra_train_heads.sh
-# Writes: /checkpoints/hydra_20b_v1/{hydra_probe.pt, hydra_judge.pt}
-```
-
-Stage 5 — Grade any corpus with HYDRA
-```bash
-bash scripts/hydra_grade.sh
-# Writes: $OUT_DIR/quality_scores.jsonl and summary.json
-```
+**Stage 1** — Build docid slices (idempotent)
+**Stage 2** — Oracle labeling on 8× GPUs (streaming + resume)
+**Stage 3** — Merge + Calibrate (fits weights and τ on val)
+**Stage 4** — Train HYDRA heads over frozen 20B
+**Stage 5** — Grade any corpus with HYDRA
 
 Resume & Idempotency
 - Slices skip rebuild when `docids_{train,val,test}.jsonl` already exist.
@@ -373,9 +353,9 @@ Resume & Idempotency
 - Grading overwrites `quality_scores.jsonl` in `OUT_DIR` (version via path).
 
 Logs & Monitoring
-- Oracle logs: `/tmp/oracle_{train|val}_${ORACLE_RUN_ID}_GPU.log` (exact name per scripts).
-- Status: `bash scripts/hydra_status.sh` shows processes, GPU usage, shard state (PENDING/RUNNING/DONE).
-- GPUs: `kubectl exec "$POD" -- nvidia-smi` (or run `nvidia-smi` locally).
+- Oracle logs: `/tmp/oracle_{train|val}_${ORACLE_RUN_ID}_GPU.log`
+- Status: use `nvidia-smi` and `ps aux | grep nmoe` to check GPU usage and shard state
+- GPUs: `kubectl exec "$POD" -- nvidia-smi` (or run `nvidia-smi` locally)
 
 Troubleshooting (quick)
 - Port busy, orphan procs: kill labeler processes and clear stray GPU procs (`nvidia-smi --query-compute-apps=pid --format=csv,noheader | xargs -r kill -9`).

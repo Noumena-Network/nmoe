@@ -14,11 +14,6 @@ from nmoe.config import Config
 from nmoe import zero2
 from nmoe.csrc import rdep as _rdep_ext
 
-try:
-  from nmoe.csrc.opt import muon as _muon_ext  # type: ignore
-except Exception:
-  _muon_ext = None  # type: ignore
-
 
 class ExpertAdamW(torch.optim.Optimizer):
   """Fused expert AdamW that emits blockscaled weight caches during the update.
@@ -146,20 +141,6 @@ class ExpertAdamW(torch.optim.Optimizer):
       )
 
     return None
-
-
-def _classify_param(name: str) -> tuple[str, bool]:
-  """Classify parameter into expert or dense, with weight decay status.
-
-  Returns: (type, needs_weight_decay)
-  """
-  # Expert parameters (MoE expert MLPs only)
-  if any(x in name for x in ['.experts.', '.W1', '.W2', '.W3', 'moe_inter']):
-    return ('expert', not name.endswith('.bias'))
-
-  # Everything else is dense (attention, embeddings, norms, router, bungee)
-  no_decay = name.endswith('.bias') or 'norm' in name or name.startswith('embedding.') or name.startswith('lm_head.') or 'bungee' in name
-  return ('dense', not no_decay)
 
 
 def build_optimizer(model: torch.nn.Module, cfg: Config) -> tuple[torch.optim.Optimizer, list[dict]]:

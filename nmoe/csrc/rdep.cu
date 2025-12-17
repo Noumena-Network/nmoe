@@ -240,6 +240,9 @@ static RdepMode g_mode = MODE_SINGLE;
     void*     sort_temp;
     size_t    sort_temp_bytes;
 
+    // 2-phase dispatch: local atomic counters for ordering within rank's sends
+    int* local_counters;  // [MAX_RANKS] - local atomics for 2-phase dispatch
+
     // Dimensions
     size_t capacity;
     size_t buffer_size;  // Total bytes per rank
@@ -250,8 +253,6 @@ static RdepMode g_mode = MODE_SINGLE;
     int align;
     bool initialized;
 
-    // 2-phase dispatch: local atomic counters for ordering within rank's sends
-    int* local_counters;  // [MAX_RANKS] - local atomics for 2-phase dispatch
 };
 
 struct StateBlockscaled {
@@ -569,13 +570,13 @@ extern "C" void rdep_alloc_bf16(size_t capacity, int H, int n_local) {
     cudaMalloc(&g_bf16.M_pad_dev, sizeof(int));
     cudaMalloc(&g_bf16.meta_copy, capacity * sizeof(Meta));
 
-    // 2-phase dispatch: local atomic counters (one per destination rank)
-    cudaMalloc(&g_bf16.local_counters, MAX_RANKS * sizeof(int));
-
     g_bf16.sort_temp_bytes = 0;
     cub::DeviceRadixSort::SortPairs(nullptr, g_bf16.sort_temp_bytes,
         g_bf16.local_eid, g_bf16.local_eid, g_bf16.order, g_bf16.order, (int)capacity);
     cudaMalloc(&g_bf16.sort_temp, g_bf16.sort_temp_bytes);
+
+    // 2-phase dispatch: local atomic counters (one per destination rank)
+    cudaMalloc(&g_bf16.local_counters, MAX_RANKS * sizeof(int));
 
     g_bf16.capacity = capacity;
     g_bf16.buffer_size = total_size;
@@ -655,37 +656,6 @@ extern "C" void rdep_alloc_blockscaled(size_t capacity, int H, int n_local, int 
     g_ipc_phase_block = 0;
 }
 
-extern "C" void rdep_reset_bf16() {
-    if (!g_bf16.initialized) return;
-    char* buf = static_cast<char*>(g_bf16.buffer_ptrs[g_bf16.rank]);
-    size_t x_off, meta_off, counter_off, dropped_off, barrier_off, buf_ptrs_off, sig_ptrs_off, tok_y_off, tok_gate_off, total_size;
-    bf16_buffer_offsets(g_bf16.capacity, g_bf16.Ha, g_bf16.world,
-                        &x_off, &meta_off, &counter_off, &dropped_off,
-                        &barrier_off, &buf_ptrs_off, &sig_ptrs_off,
-                        &tok_y_off, &tok_gate_off,
-                        &total_size);
-    cudaMemset(buf + counter_off, 0, sizeof(int));
-    cudaMemset(buf + dropped_off, 0, sizeof(int));
-    // Also reset barrier signals
-    cudaMemset(buf + barrier_off, 0, MAX_RANKS * sizeof(int));
-    g_ipc_phase_bf16 = 0;
-}
-
-extern "C" void rdep_reset_blockscaled() {
-    if (!g_block.initialized) return;
-    char* buf = static_cast<char*>(g_block.buffer_ptrs[g_block.rank]);
-    size_t x_off, sfa_off, y_off, meta_off, counter_off, dropped_off, barrier_off, buf_ptrs_off, sig_ptrs_off, tok_y_off, tok_gate_off, total_size;
-    blockscaled_buffer_offsets(g_block.capacity, g_block.H, g_block.Hp, g_block.Hsf, g_block.world,
-                               &x_off, &sfa_off, &y_off, &meta_off, &counter_off, &dropped_off,
-                               &barrier_off, &buf_ptrs_off, &sig_ptrs_off,
-                               &tok_y_off, &tok_gate_off,
-                               &total_size);
-    cudaMemset(buf + counter_off, 0, sizeof(int));
-    cudaMemset(buf + dropped_off, 0, sizeof(int));
-    cudaMemset(buf + barrier_off, 0, MAX_RANKS * sizeof(int));
-    g_ipc_phase_block = 0;
-}
-
 // ============================================================================
 // IPC Dispatch Kernel - Direct P2P writes via IPC pointers
 // ============================================================================
@@ -702,8 +672,6 @@ __device__ int   d_world_block;
 
 // One-CTA, system-scope cross-GPU barriers (IPC mode).
 // Declared here for use in forward dispatch/return; defined below with other IPC helpers.
-__global__ void k_barrier_bf16();
-__global__ void k_barrier_blockscaled();
 __global__ void k_ipc_barrier_phase_bf16(int phase);
 __global__ void k_ipc_barrier_phase_block(int phase);
 
@@ -1725,24 +1693,6 @@ extern "C" void rdep_scatter_sorted_to_pad_bf16(
     k_scatter_sorted_to_pad_bf16<<<blocks, threads, 0, stream>>>(
         static_cast<const __nv_bfloat16*>(in_sorted),
         g_bf16.dest,
-        static_cast<__nv_bfloat16*>(out_pad),
-        M_recv, H);
-}
-
-extern "C" void rdep_scatter_sorted_to_pad_with_dest_bf16(
-    const void* in_sorted,   // [M_recv, H] BF16
-    const int* dest,         // [M_recv] int32 mapping sorted->padded
-    void* out_pad,           // [M_pad, H] BF16
-    int M_recv,
-    int H,
-    cudaStream_t stream)
-{
-    if (M_recv <= 0 || H <= 0) return;
-    int threads = 256;
-    int blocks = std::max(1, (M_recv * 32 + threads - 1) / threads);
-    k_scatter_sorted_to_pad_bf16<<<blocks, threads, 0, stream>>>(
-        static_cast<const __nv_bfloat16*>(in_sorted),
-        dest,
         static_cast<__nv_bfloat16*>(out_pad),
         M_recv, H);
 }
@@ -3070,15 +3020,6 @@ extern "C" void rdep_scatter_dx_bf16_internal(
 // They intentionally avoid relying on global mutable forward metadata across
 // layers by using the materialized per-dispatch row_id tensors.
 // ============================================================================
-
-__global__ void k_barrier_bf16() {
-    // One-block barrier; uses system-scope atomics.
-    barrier_block_dynamic(d_barrier_signal_ptrs_bf16, d_my_rank_bf16, d_world_bf16);
-}
-
-__global__ void k_barrier_blockscaled() {
-    barrier_block_dynamic(d_barrier_signal_ptrs_block, d_my_rank_block, d_world_block);
-}
 
 __global__ void k_ipc_barrier_phase_bf16(int phase) {
     // One-CTA IPC barrier using per-peer phase slots (DeepEP-style direction):
