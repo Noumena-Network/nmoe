@@ -32,7 +32,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
+      - name: Log in to GHCR (PAT)
+        if: ${{ secrets.GHCR_PUBLISH_TOKEN != '' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PUBLISH_TOKEN }}
+
+      - name: Log in to GHCR (GITHUB_TOKEN)
+        if: ${{ secrets.GHCR_PUBLISH_TOKEN == '' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
