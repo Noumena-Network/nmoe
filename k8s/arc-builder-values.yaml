@@ -1,0 +1,26 @@
+# ARC runner scale set for building/publishing container images.
+#
+# Public-safe: no credentials in this file. Create the GitHub auth secret out-of-band:
+#   kubectl create secret generic github-runner-pat \
+#     --namespace default \
+#     --from-literal=github_token='<TOKEN_WITH_REPO_SCOPE>'
+#
+# Install:
+#   helm install nmoe-builder --namespace default -f k8s/arc-builder-values.yaml \
+#     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set --version 0.10.1
+#
+# Upgrade:
+#   helm upgrade nmoe-builder --namespace default -f k8s/arc-builder-values.yaml \
+#     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set --version 0.10.1
+
+githubConfigUrl: "https://github.com/Noumena-Network/nmoe"
+githubConfigSecret: "github-runner-pat"
+
+runnerScaleSetName: "builder"
+minRunners: 0
+maxRunners: 1
+
+# Use Docker-in-Docker so workflows can run docker buildx/build-push.
+containerMode:
+  type: "dind"
+
