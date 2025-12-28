@@ -17,9 +17,9 @@ import time
 from contextlib import nullcontext
 
 import torch
-import torch.nn.functional as F
 
 from nmoe.config import Config, fingerprint
+from nmoe.loss import chunked_cross_entropy
 from nmoe.model import Transformer
 from nmoe.data.loader import build_loader
 from nmoe.opt import build_optimizer, update_lr, step
@@ -33,7 +33,7 @@ from nmoe.eval.hooks import maybe_schedule_eval
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 
-def train(cfg: Config):
+def train(cfg: Config, *, exit_after: int | None = None):
   """Train MoE model. One clear path: forward → loss → backward → step → log → checkpoint."""
   rank, world = runtime.init(cfg.seed)
   #TODO(EM): these if blocks and raises are ugly. rewrite or move
@@ -90,6 +90,8 @@ def train(cfg: Config):
   try:
     with nvtx_ctx('train/run'):
       for step_num in range(start_step, cfg.steps):
+        if exit_after is not None and (step_num - start_step) >= exit_after:
+          break
         lr = update_lr(optimizer, dense_groups, step_num, tokens_seen, cfg)
 
         t0 = time.perf_counter()
@@ -97,12 +99,10 @@ def train(cfg: Config):
         loader_wait_ms = (time.perf_counter() - t0) * 1000.0
 
         with nvtx_ctx('train/fwd_total'), time_ctx('time_ms/fwd_total'):
-          logits = model(inputs)
+          hidden = model(inputs, return_hidden=True)
 
         with nvtx_ctx('train/loss'), time_ctx('time_ms/loss'):
-          loss_unreduced = F.cross_entropy(logits.reshape(-1, cfg.vocab_size), targets.reshape(-1), reduction='none')
-          mask = (targets != cfg.eos_token_id).reshape(-1).float()
-          loss = (loss_unreduced * mask).sum() / mask.sum().clamp(min=1.0)
+          loss = chunked_cross_entropy(hidden, model.lm_head.weight, targets, ignore_index=cfg.eos_token_id)
 
         model.zero_grad(set_to_none=True)
         with nvtx_ctx('train/bwd_total'), time_ctx('time_ms/bwd_total'):
@@ -187,6 +187,8 @@ def main():
   with open(sys.argv[1], 'rb') as f:
     cfg_dict = tomllib.load(f)
 
+  exit_after: int | None = None
+
   # Apply environment variable overrides (NMOE_DTYPE, NMOE_STEPS, etc.)
   for key in ['dtype', 'steps', 'batch_size', 'seq_len', 'resume']:
     env_key = f'NMOE_{key.upper()}'
@@ -212,10 +214,13 @@ def main():
         val = float(val)
       cfg_dict[key] = val
 
+  if 'exit_after' in cfg_dict:
+    exit_after = int(cfg_dict.pop('exit_after'))
+
   cfg = Config(**cfg_dict)
 
   try:
-    train(cfg)
+    train(cfg, exit_after=exit_after)
   finally:
     runtime.finalize()
 
