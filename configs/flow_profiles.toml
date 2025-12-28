@@ -1,0 +1,166 @@
+# Flow profiles for nmoe training runs.
+#
+# Token targets derived from DeepSeek-V3 (14.8T @ 37B active = 400x ratio).
+# See docs/TRAINING_TARGETS.md for full rationale.
+#
+# Flows:
+#   dev       - Does it run? Smoke test. (~100M tokens)
+#   research  - Architecture research, stable signal. (~1B tokens)
+#   ablation  - A vs B comparison. (~4-75B tokens depending on config)
+#   proxy     - μP validation, scaling laws. (400x active params)
+#   full_train - Production model, best at size. (OLMo-3 mix ~6.1T)
+#
+# Stages: pretrain | mid | long
+# Stage mapping via [flow.*.mixture] section.
+
+###############################################################################
+# dev - Smoke test (~100M tokens)
+# Purpose: Does it run? Catch obvious bugs.
+# Duration: ~7 min @ 8 GPU
+###############################################################################
+[flow.dev]
+mode = "dev"
+stages = ["pretrain"]
+tokens_b = 0.1  # 100M tokens
+sample_temperature = 1.0
+
+[flow.dev.mixture]
+pretrain = "olmo3_1025_pretrain_6T"
+
+###############################################################################
+# research - Architecture research (~1B tokens)
+# Purpose: Stable loss curves, basic signal for arch changes.
+# Duration: ~1.2 hr @ 8 GPU
+###############################################################################
+[flow.research]
+mode = "research"
+stages = ["pretrain"]
+tokens_b = 1.0  # 1B tokens
+sample_temperature = 1.0
+
+[flow.research.mixture]
+pretrain = "olmo3_1025_pretrain_6T"
+
+###############################################################################
+# ablation - A vs B comparison
+# Purpose: Enough tokens to see clear differences between configs.
+# Duration: ~5-7 hr @ 8 GPU (moonlet/moonlight), ~3.6 days (dsv3)
+#
+# Token targets (config-aware):
+#   moonlet (2B active):   4B tokens
+#   moonlight (3B active): 6B tokens
+#   dsv3 (37B active):     75B tokens
+#
+# Uses scale relative to full OLMo-3 mix (6.1T):
+#   moonlet/moonlight: 0.1% = 6.1B (close enough to 4-6B)
+#   dsv3: 1.2% = 75B
+###############################################################################
+[flow.ablation]
+mode = "ablation"
+stages = ["pretrain"]
+tokens_b = 6.0  # 6B tokens (suitable for moonlet/moonlight)
+sample_temperature = 1.0
+
+[flow.ablation.mixture]
+pretrain = "olmo3_1025_pretrain_6T"
+
+###############################################################################
+# proxy - μP validation, scaling laws (400x active params)
+# Purpose: Validate hyperparameter transfer, mixture tuning.
+# Duration: ~39-58 days @ 8 GPU (needs more GPUs for practical use)
+#
+# Token targets (400x active params):
+#   moonlet (2B active):   800B tokens
+#   moonlight (3B active): 1.2T tokens
+#   dsv3 (37B active):     14.8T tokens
+###############################################################################
+[flow.proxy]
+mode = "proxy"
+stages = ["pretrain", "mid"]
+tokens_b_ratio = 400  # 400x active_params_b from model config
+sample_temperature = 1.0
+
+[flow.proxy.mixture]
+pretrain = "olmo3_1025_pretrain_6T"
+mid = "olmo3_1025_dolmino_100B"
+
+###############################################################################
+# full_train - Production model (OLMo-3 full mix ~6.1T)
+# Purpose: Best model possible at size.
+# Duration: ~294 days @ 8 GPU (needs 256+ GPUs)
+#
+# Token targets:
+#   moonlet/moonlight: 6.1T (full OLMo-3 mix)
+#   dsv3: 14.8T (Phase 2 - needs custom mix)
+###############################################################################
+[flow.full_train]
+mode = "full_train"
+stages = ["pretrain", "mid", "long"]
+scale = 1.0  # 100% of OLMo-3 mix
+sample_temperature = 1.0
+
+[flow.full_train.mixture]
+pretrain = "olmo3_1025_pretrain_6T"
+mid = "olmo3_1025_dolmino_100B"
+long = "olmo3_1025_longmino_50B"
+
+###############################################################################
+# LEGACY COMPATIBILITY (deprecated, use flows above)
+###############################################################################
+
+# test - DEPRECATED, use 'dev' instead
+[flow.test]
+mode = "test"
+stages = ["pretrain"]
+scale = 0.001
+sample_temperature = 1.0
+
+[flow.test.mixture]
+pretrain = "olmo3_1025_pretrain_6T"
+
+###############################################################################
+# proxy_fineweb - FineWeb-Edu 100B proxy run
+# Purpose: Validate frozen-expert training with HYDRA filtering
+# Duration: Depends on HYDRA throughput
+###############################################################################
+[flow.proxy_fineweb]
+mode = "proxy"
+stages = ["pretrain"]
+tokens_b = 100.0
+sample_temperature = 1.0
+
+[flow.proxy_fineweb.mixture]
+pretrain = "fineweb_edu_100b"
+
+###############################################################################
+# hydra_fixture - Small HYDRA smoke fixture (CI / local validation)
+###############################################################################
+[flow.hydra_fixture]
+mode = "dev"
+stages = ["pretrain"]
+tokens_b = 0.001
+sample_temperature = 1.0
+
+[flow.hydra_fixture.mixture]
+pretrain = "hydra_fixture_pretrain"
+
+###############################################################################
+# CLI flow profiles (validation/bench)
+#
+# `python -m nmoe.data.cli flow --config configs/flow_profiles.toml --profile mini ...`
+###############################################################################
+[profiles.mini]
+mixture = "configs/mixtures/fineweb_edu_proxy.toml"
+flow = "proxy_fineweb"
+stage = "pretrain"
+splits = "train"
+seed = 123
+limit = 1000
+
+[profiles.hydra_fixture]
+mixture = "configs/mixtures/hydra_fixture.toml"
+flow = "hydra_fixture"
+stage = "pretrain"
+splits = "train"
+seed = 123
+limit = 500

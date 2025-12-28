@@ -1,0 +1,21 @@
+# FineWeb-Edu 100B Proxy
+#
+# Purpose: Validate frozen-expert training pipeline with HYDRA filtering
+# Dataset: fineweb_edu_100B (223GB, pre-shuffled)
+# Total: ~100B tokens
+
+[profiles]
+pretrain_profile = "fineweb_edu_100b"
+
+[mixtures.fineweb_edu_100b]
+total_tokens_b = 100.0
+sample_temperature = 1.0
+
+[[mixtures.fineweb_edu_100b.sources]]
+id = "fineweb_edu"
+tokens_b = 100.0
+percent = 100.0
+hf_dataset = "allenai/dolma3_mix-6T-1025"
+hf_split = "train"
+text_field = "text"
+hf_data_files = ["data/dolma1_7-wiki-en/00000.jsonl.zst"]

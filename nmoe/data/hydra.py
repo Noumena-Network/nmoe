@@ -3,22 +3,24 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Iterator, List, Tuple
 
 import numpy as np
 import torch
+import torch.nn as nn
 
 from .model import BatchedGenerator, Transformer, pool_hidden
-from .train import ProbeHead, MTPJudgeHead
+from .train import ProbeHead, JudgeEncoder
 from .score import build_prompt, right_trim, grade_prompts, compute_aggregated
 from .docid import parse_doc_id, shard_path
 
 try:
-    from openai_harmony import HarmonyEncodingName, load_harmony_encoding
+  from openai_harmony import HarmonyEncodingName, load_harmony_encoding
 except Exception:  # pragma: no cover
-    HarmonyEncodingName = None  # type: ignore
-    load_harmony_encoding = None  # type: ignore
+  HarmonyEncodingName = None  # type: ignore
+  load_harmony_encoding = None  # type: ignore
 
 
 def _load_enc():
@@ -285,329 +287,579 @@ def _aggregated_with_w(scores: Dict[str, float], w: Dict[str, float]) -> float:
     return s / tot
 
 
-def load_local_hydra_judge(*, model: Transformer, heads_dir: str | Path, device: torch.device) -> MTPJudgeHead:
-    """Load HYDRA judge head weights on top of a frozen backbone."""
-    ckpt_dir = Path(heads_dir)
-    judge = MTPJudgeHead(model.config.hidden_size).to(device)
-    judge.load_state_dict(torch.load(ckpt_dir / "hydra_judge.pt", map_location=device))
-    # Run judge in BF16 to align with backbone activations
+class _LegacyJudgeEncoderV0(nn.Module):
+  """Legacy HYDRA judge head (pre-export-format).
+
+  Checkpoints with keys like:
+    q0, proj.*, enc0.*, enc1.*, shared_head.*, score_embed.*
+  """
+
+  def __init__(self, hidden_dim: int, *, mid_dim: int = 512, nhead: int = 8):
+    super().__init__()
+    self.q0 = nn.Parameter(torch.empty(hidden_dim))
+    nn.init.normal_(self.q0, mean=0.0, std=0.02)
+    self.proj = nn.Linear(hidden_dim, mid_dim)
+    self.enc0 = nn.TransformerEncoderLayer(d_model=mid_dim, nhead=nhead, batch_first=True)
+    self.enc1 = nn.TransformerEncoderLayer(d_model=mid_dim, nhead=nhead, batch_first=True)
+    self.shared_head = nn.Linear(mid_dim, 5)
+    self.score_embed = nn.Sequential(
+      nn.Linear(5, mid_dim),
+      nn.ReLU(),
+      nn.Linear(mid_dim, mid_dim),
+    )
+
+  def forward(self, h24_seq: torch.Tensor) -> torch.Tensor:
+    bsz, _, h = h24_seq.shape
+    q = self.q0.unsqueeze(0).unsqueeze(1).expand(bsz, 1, h)
+    z = self.proj(torch.cat([q, h24_seq], dim=1))
+    z = self.enc0(z)
+    s0 = self.shared_head(z[:, 0, :])
+    z0 = z[:, 0, :] + self.score_embed(s0)
+    z = torch.cat([z0.unsqueeze(1), z[:, 1:, :]], dim=1)
+    z = self.enc1(z)
+    return self.shared_head(z[:, 0, :])
+
+
+def load_local_hydra_judge(*, model: Transformer, heads_dir: str | Path, device: torch.device) -> nn.Module:
+  """Load HYDRA judge head weights on top of a frozen backbone."""
+  ckpt_dir = Path(heads_dir)
+  # Try new export format first, fall back to legacy
+  judge_path = ckpt_dir / "hydra_judge.pt"
+  if not judge_path.exists():
+    judge_path = ckpt_dir / "hydra_judge_phase_b.pt"
+  ckpt = torch.load(judge_path, map_location=device)
+
+  # New format from JudgeEncoder.export() has nested dicts.
+  if isinstance(ckpt, dict) and "projector" in ckpt and "encoder" in ckpt and "rubric_head" in ckpt:
+    judge = JudgeEncoder(model.config.hidden_size).to(device)
+    judge.projector.load_state_dict(ckpt["projector"])
+    q_token = ckpt["encoder"].pop("q_token", None)
+    judge.encoder.load_state_dict(ckpt["encoder"])
+    judge.rubric_head.load_state_dict(ckpt["rubric_head"])
+    if q_token is not None:
+      judge.q_token.data.copy_(q_token.to(device=device, dtype=judge.q_token.dtype))
+
     judge = judge.to(device=device, dtype=torch.bfloat16)
     judge.eval()
     return judge
 
+  # Legacy v0 flat state_dict (enc0/enc1 + score_embed refinement).
+  if isinstance(ckpt, dict) and "q0" in ckpt and "proj.weight" in ckpt and "enc0.self_attn.in_proj_weight" in ckpt:
+    legacy = _LegacyJudgeEncoderV0(model.config.hidden_size).to(device)
+    legacy.load_state_dict(ckpt)
+    legacy = legacy.to(device=device, dtype=torch.bfloat16)
+    legacy.eval()
+    return legacy
+
+  # Legacy flat state_dict for the current JudgeEncoder module.
+  judge = JudgeEncoder(model.config.hidden_size).to(device)
+  judge.load_state_dict(ckpt)
+  judge = judge.to(device=device, dtype=torch.bfloat16)
+  judge.eval()
+  return judge
+
+
+def load_local_hydra_probe(*, model: Transformer, heads_dir: str | Path, device: torch.device) -> ProbeHead:
+  """Load HYDRA probe head weights for early exit decisions."""
+  ckpt_dir = Path(heads_dir)
+  probe = ProbeHead(model.config.hidden_size).to(device)
+  # Try phase-c (distilled) first, then phase-a, then legacy
+  probe_path = ckpt_dir / "hydra_probe_phase_c.pt"
+  if not probe_path.exists():
+    probe_path = ckpt_dir / "hydra_probe_phase_a.pt"
+  if not probe_path.exists():
+    probe_path = ckpt_dir / "hydra_probe.pt"
+  if probe_path.exists():
+    probe.load_state_dict(torch.load(probe_path, map_location=device))
+  else:
+    print(f"[hydra] Warning: No probe checkpoint found in {ckpt_dir}, using random init")
+  probe = probe.to(device=device, dtype=torch.bfloat16)
+  probe.eval()
+  return probe
+
 
 @torch.no_grad()
 def grade_texts_with_local_hydra_judge(
-    *,
-    model: Transformer,
-    judge: MTPJudgeHead,
-    texts: List[str],
-    doc_ids: List[str],
-    max_ctx: int,
-    batch_size: int,
-    w: Dict[str, float],
-    tau_drop: float,
-    tau_keep: float,
-    device: torch.device,
-    enc_name: str = "o200k_harmony",
+  *,
+  model: Transformer,
+  judge: nn.Module,
+  probe: ProbeHead | None = None,
+  ln24: nn.LayerNorm | None = None,
+  texts: List[str],
+  doc_ids: List[str],
+  max_ctx: int,
+  batch_size: int,
+  w: Dict[str, float],
+  tau_drop: float,
+  tau_keep: float,
+  device: torch.device,
+  enc_name: str = "o200k_harmony",
+  use_early_exit: bool = True,
 ) -> List[Dict[str, Any]]:
-    """Grade texts with the local HYDRA judge head.
+  """Grade texts with HYDRA probe (L18 early exit) + judge (L24 final).
 
-    Returns list of rows:
-      {doc_id, scores{5}, aggregated, decision}
-    """
-    if len(texts) != len(doc_ids):
-        raise ValueError("texts/doc_ids length mismatch")
-    out: List[Dict[str, Any]] = []
-    for i in range(0, len(texts), batch_size):
-        chunk_texts = texts[i : i + batch_size]
-        chunk_ids = doc_ids[i : i + batch_size]
-        input_ids, positions = _tokenize_batch(chunk_texts, enc_name=enc_name, max_ctx=max_ctx)
-        input_ids = input_ids.to(device)
-        positions = positions.to(device)
-        _, h = model(
-            input_ids,
-            positions,
-            return_hidden_states=True,
-            up_to_layer=model.config.num_hidden_layers,
-            no_logits=True,
-        )
-        h24 = h.get(24)
-        if h24 is None:
-            raise RuntimeError("Missing hidden state at layer 24")
-        s0, s1 = judge(h24, teacher_scores=None)
-        sj = s1 if s1 is not None else s0
-        sj = torch.clamp(sj, 0.0, 4.0)
-        for j, did in enumerate(chunk_ids):
-            final_scores = {
-                k: float(sj[j, idx].item())
-                for idx, k in enumerate(["helpfulness", "correctness", "coherence", "complexity", "density"])
-            }
-            agg_final = _aggregated_with_w(final_scores, w)
-            if agg_final >= tau_keep:
-                decision = "keep"
-            elif agg_final < tau_drop:
-                decision = "drop"
-            else:
-                decision = "band"
-            out.append({"doc_id": did, "scores": final_scores, "aggregated": agg_final, "decision": decision})
-    return out
+  Flow from HYDRA_TRAINING.md:
+  1. Run probe at L18 → q_gate
+  2. If q_gate < τ_drop → DROP (save compute, skip L24)
+  3. If q_gate ≥ τ_drop → continue to L24 → judge → final decision
+
+  Returns list of rows:
+    {doc_id, q_probe, scores{5}, aggregated, decision, early_exit}
+  """
+  if len(texts) != len(doc_ids):
+    raise ValueError("texts/doc_ids length mismatch")
+  if ln24 is None:
+    ln24 = nn.LayerNorm(model.config.hidden_size).to(device)
+  judge_dtype = next(judge.parameters()).dtype
+  probe_dtype = next(probe.parameters()).dtype if probe is not None else None
+  out: List[Dict[str, Any]] = []
+
+  for i in range(0, len(texts), batch_size):
+    chunk_texts = texts[i : i + batch_size]
+    chunk_ids = doc_ids[i : i + batch_size]
+    input_ids, positions = _tokenize_batch(chunk_texts, enc_name=enc_name, max_ctx=max_ctx)
+    input_ids = input_ids.to(device)
+    positions = positions.to(device)
+
+    # Always run to L18 first
+    _, h = model(
+      input_ids,
+      positions,
+      return_hidden_states=True,
+      up_to_layer=18,
+      no_logits=True,
+    )
+    h18 = h.get(18)
+    if h18 is None:
+      raise RuntimeError("Missing hidden state at layer 18")
+    h18_pooled = pool_hidden(h18).float()
+
+    # Probe scoring
+    if probe is not None:
+      probe_out = probe(h18_pooled.to(dtype=probe_dtype))
+      q_probe = probe_out["gate"]
+    else:
+      q_probe = torch.zeros(len(chunk_ids), device=device)
+
+    # Determine which samples need L24
+    need_judge = torch.ones(len(chunk_ids), dtype=torch.bool, device=device)
+    if use_early_exit and probe is not None:
+      need_judge = q_probe >= tau_drop
+
+    # Process early exits
+    for j, did in enumerate(chunk_ids):
+      q_val = float(q_probe[j].item())
+      if not need_judge[j]:
+        out.append({
+          "doc_id": did,
+          "q_probe": q_val,
+          "scores": None,
+          "aggregated": q_val,
+          "decision": "drop",
+          "early_exit": True,
+        })
+
+    # Continue to L24 for remaining samples
+    judge_indices = need_judge.nonzero(as_tuple=True)[0].tolist()
+    if judge_indices:
+      judge_input_ids = input_ids[judge_indices]
+      judge_positions = positions[judge_indices]
+
+      _, h_full = model(
+        judge_input_ids,
+        judge_positions,
+        return_hidden_states=True,
+        up_to_layer=model.config.num_hidden_layers,
+        no_logits=True,
+      )
+      h24 = h_full.get(24)
+      if h24 is None:
+        raise RuntimeError("Missing hidden state at layer 24")
+      h24f = torch.nan_to_num(h24, nan=0.0, posinf=1e4, neginf=-1e4).float()
+      h24f = ln24(h24f).to(dtype=judge_dtype)
+
+      sj = judge(h24f)
+      sj = torch.clamp(sj, 0.0, 4.0)
+
+      for k, orig_j in enumerate(judge_indices):
+        did = chunk_ids[orig_j]
+        q_val = float(q_probe[orig_j].item())
+        final_scores = {
+          dim: float(sj[k, idx].item())
+          for idx, dim in enumerate(["helpfulness", "correctness", "coherence", "complexity", "density"])
+        }
+        agg_final = _aggregated_with_w(final_scores, w)
+        if agg_final >= tau_keep:
+          decision = "keep"
+        elif agg_final < tau_drop:
+          decision = "drop"
+        else:
+          decision = "band"
+        out.append({
+          "doc_id": did,
+          "q_probe": q_val,
+          "scores": final_scores,
+          "aggregated": agg_final,
+          "decision": decision,
+          "early_exit": False,
+        })
+
+  return out
 
 
 def cmd_grade(args: argparse.Namespace) -> int:
-    def iter_rows() -> Iterator[Dict[str, Any]]:
-        if getattr(args, "input_docids", None):
-            if not getattr(args, "data_root", None):
-                raise ValueError("--data-root is required when using --input-docids")
-            with open(args.input_docids, "r", encoding="utf-8") as f:
-                for line in f:
-                    if not line.strip():
-                        continue
-                    j = json.loads(line)
-                    doc_id = j.get("doc_id") or j.get("id")
-                    if not doc_id:
-                        continue
-                    src = j.get("source")
-                    if not src:
-                        try:
-                            src = parse_doc_id(doc_id).source
-                        except Exception:
-                            src = "unknown"
-                    yield {"doc_id": doc_id, "source": src}
+  """Grade corpus with HYDRA probe + judge (L18 early exit + L24 final)."""
+  def iter_rows() -> Iterator[Dict[str, Any]]:
+    if getattr(args, "input_docids", None):
+      if not getattr(args, "data_root", None):
+        raise ValueError("--data-root is required when using --input-docids")
+      with open(args.input_docids, "r", encoding="utf-8") as f:
+        for line in f:
+          if not line.strip():
+            continue
+          j = json.loads(line)
+          doc_id = j.get("doc_id") or j.get("id")
+          if not doc_id:
+            continue
+          src = j.get("source")
+          if not src:
+            try:
+              src = parse_doc_id(doc_id).source
+            except Exception:
+              src = "unknown"
+          yield {"doc_id": doc_id, "source": src}
+    else:
+      with open(args.input_jsonl, "r", encoding="utf-8") as f:
+        idx = 0
+        for line in f:
+          if not line.strip():
+            continue
+          j = json.loads(line)
+          text = j.get("text")
+          if text is None:
+            continue
+          did = j.get("doc_id") or j.get("id") or f"row:{idx}"
+          idx += 1
+          yield {"doc_id": did, "source": j.get("source", "unknown"), "text": text}
+
+  # Load backbone, probe, and judge heads
+  device = torch.device("cuda")
+  print("[hydra] Loading backbone...")
+  model = Transformer.from_checkpoint(args.checkpoint, device=device)
+  for p in model.parameters():
+    p.requires_grad_(False)
+  model.eval()
+
+  print("[hydra] Loading heads...")
+  judge = load_local_hydra_judge(model=model, heads_dir=args.heads_dir, device=device)
+  probe = load_local_hydra_probe(model=model, heads_dir=args.heads_dir, device=device)
+  ln24 = nn.LayerNorm(model.config.hidden_size).to(device)
+  judge_dtype = next(judge.parameters()).dtype
+  probe_dtype = next(probe.parameters()).dtype
+
+  # Calibration
+  w, tau_drop, tau_keep = _load_calibration(args.calibration)
+  use_early_exit = not getattr(args, "no_early_exit", False)
+  print(f"[hydra] tau_drop={tau_drop:.3f} tau_keep={tau_keep:.3f} early_exit={use_early_exit}")
+
+  # Output setup
+  out_dir = Path(args.out)
+  _ensure_dir(out_dir)
+  out_path = out_dir / "quality_scores.jsonl"
+  out_tmp_path = out_dir / "quality_scores.jsonl.tmp"
+  summary_path = out_dir / "summary.json"
+
+  # Stats
+  kept, dropped, band, early_exits = 0, 0, 0, 0
+  per_source: Dict[str, Dict[str, int]] = {}
+  total = 0
+  t_start = time.perf_counter()
+
+  with out_tmp_path.open("w", encoding="utf-8") as outf:
+    B = int(args.max_batch)
+    chunk: List[Dict[str, Any]] = []
+
+    for rec in iter_rows():
+      chunk.append(rec)
+      if len(chunk) < B:
+        continue
+
+      # Process chunk
+      total += len(chunk)
+
+      # Build tensors
+      if getattr(args, "input_docids", None):
+        toks_list: List[List[int]] = []
+        for r in chunk:
+          d = parse_doc_id(r["doc_id"])
+          arr = np.load(shard_path(args.data_root, d), mmap_mode="r")
+          toks = arr[int(d.start) : int(d.end)].tolist()
+          toks_list.append(toks[: args.max_ctx])
+        max_len = max(len(t) for t in toks_list) if toks_list else 1
+        input_ids = torch.zeros(len(toks_list), max_len, dtype=torch.long)
+        positions = torch.zeros(len(toks_list), max_len, dtype=torch.long)
+        for j2, t in enumerate(toks_list):
+          n = len(t)
+          if n:
+            input_ids[j2, :n] = torch.tensor(t, dtype=torch.long)
+            positions[j2, :n] = torch.arange(n, dtype=torch.long)
+      else:
+        texts = [r["text"] for r in chunk]
+        input_ids, positions = _tokenize_batch(texts, max_ctx=args.max_ctx)
+
+      input_ids = input_ids.to(device)
+      positions = positions.to(device)
+
+      with torch.no_grad():
+        # L18 probe pass
+        _, h18_dict = model(input_ids, positions, return_hidden_states=True, up_to_layer=18, no_logits=True)
+        h18 = h18_dict.get(18)
+        if h18 is None:
+          raise RuntimeError("Missing hidden state at layer 18")
+        h18_pooled = pool_hidden(h18).float()
+
+        # Probe scoring
+        probe_out = probe(h18_pooled.to(dtype=probe_dtype))
+        q_probe = probe_out["gate"]
+
+        # Early exit mask
+        if use_early_exit:
+          need_judge = q_probe >= tau_drop
         else:
-            with open(args.input_jsonl, "r", encoding="utf-8") as f:
-                idx = 0
-                for line in f:
-                    if not line.strip():
-                        continue
-                    j = json.loads(line)
-                    text = j.get("text")
-                    if text is None:
-                        continue
-                    did = j.get("doc_id") or j.get("id") or f"row:{idx}"
-                    idx += 1
-                    yield {"doc_id": did, "source": j.get("source", "unknown"), "text": text}
+          need_judge = torch.ones(len(chunk), dtype=torch.bool, device=device)
 
-    # Load backbone and judge head (probe removed - never worked properly)
-    device = torch.device("cuda")
-    model = Transformer.from_checkpoint(args.checkpoint, device=device)
-    for p in model.parameters():
-        p.requires_grad_(False)
-    judge = load_local_hydra_judge(model=model, heads_dir=args.heads_dir, device=device)
-    model.eval()
+        judge_indices = need_judge.nonzero(as_tuple=True)[0].tolist()
 
-    # Calibration
-    w, tau_drop, tau_keep = _load_calibration(args.calibration)
+        # L24 judge pass for non-early-exit samples
+        rubric_scores = {}
+        if judge_indices:
+          judge_input_ids = input_ids[judge_indices]
+          judge_positions = positions[judge_indices]
+          _, h24_dict = model(judge_input_ids, judge_positions, return_hidden_states=True, up_to_layer=model.config.num_hidden_layers, no_logits=True)
+          h24 = h24_dict.get(24)
+          if h24 is None:
+            raise RuntimeError("Missing hidden state at layer 24")
+          h24f = torch.nan_to_num(h24, nan=0.0, posinf=1e4, neginf=-1e4).float()
+          h24f = ln24(h24f).to(dtype=judge_dtype)
+          sj = judge(h24f)
+          sj = torch.clamp(sj, 0.0, 4.0)
 
-    # Tokenize batchwise and grade
-    out_dir = Path(args.out)
-    _ensure_dir(out_dir)
-    out_path = out_dir / "quality_scores.jsonl"
-    out_tmp_path = out_dir / "quality_scores.jsonl.tmp"
-    summary_path = out_dir / "summary.json"
-    summary_tmp_path = out_dir / "summary.json.tmp"
+          for k, orig_j in enumerate(judge_indices):
+            rubric_scores[orig_j] = {
+              dim: float(sj[k, idx].item())
+              for idx, dim in enumerate(["helpfulness", "correctness", "coherence", "complexity", "density"])
+            }
 
-    kept = 0
-    dropped = 0
-    band = 0
-    per_source: Dict[str, Tuple[int, int, int]] = {}
-    total = 0
-    with out_tmp_path.open("w", encoding="utf-8") as outf:
-        B = int(args.max_batch)
-        chunk: List[Dict[str, Any]] = []
-        for rec in iter_rows():
-            chunk.append(rec)
-            if len(chunk) < B:
-                continue
-            total += len(chunk)
-            # Build tensors either from shard tokens or from text
-            if getattr(args, "input_docids", None):
-                import numpy as np
-                toks_list: List[List[int]] = []
-                for r in chunk:
-                    d = parse_doc_id(r["doc_id"])
-                    arr = np.load(shard_path(args.data_root, d), mmap_mode="r")
-                    toks = arr[int(d.start) : int(d.end)].tolist()
-                    toks_list.append(toks[: args.max_ctx])
-                max_len = max(len(t) for t in toks_list)
-                input_ids = torch.zeros(len(toks_list), max_len, dtype=torch.long)
-                positions = torch.zeros(len(toks_list), max_len, dtype=torch.long)
-                for j2, t in enumerate(toks_list):
-                    n = len(t)
-                    if n:
-                        input_ids[j2, :n] = torch.tensor(t, dtype=torch.long)
-                        positions[j2, :n] = torch.arange(n, dtype=torch.long)
-            else:
-                texts = [r["text"] for r in chunk]
-                input_ids, positions = _tokenize_batch(texts, max_ctx=args.max_ctx)
-            input_ids = input_ids.to(device)
-            positions = positions.to(device)
-            with torch.no_grad():
-                _, h = model(
-                    input_ids,
-                    positions,
-                    return_hidden_states=True,
-                    up_to_layer=model.config.num_hidden_layers,
-                    no_logits=True,
-                )
-                h24 = h.get(24)
-                if h24 is None:
-                    raise RuntimeError("Missing hidden state at layer 24")
+      # Write results
+      for j, rec in enumerate(chunk):
+        q_val = float(q_probe[j].item())
+        src = rec["source"]
+        if src not in per_source:
+          per_source[src] = {"kept": 0, "dropped": 0, "band": 0, "early_exit": 0}
 
-            # Grade with Judge head only (probe removed)
-            for j, rec in enumerate(chunk):
-                with torch.no_grad():
-                    s0, s1 = judge(h24[j : j + 1], teacher_scores=None)
-                    sj = s1 if s1 is not None else s0
-                    sj = torch.clamp(sj, 0.0, 4.0)[0]
-                final_scores = {k: float(sj[idx].item()) for idx, k in enumerate(["helpfulness", "correctness", "coherence", "complexity", "density"]) }
-                agg_final = _aggregated_with_w(final_scores, w)
+        if not need_judge[j]:
+          # Early exit → drop
+          decision = "drop"
+          dropped += 1
+          early_exits += 1
+          per_source[src]["dropped"] += 1
+          per_source[src]["early_exit"] += 1
+          out_row = {
+            "doc_id": rec["doc_id"],
+            "source": src,
+            "q_probe": q_val,
+            "scores": None,
+            "aggregated": q_val,
+            "decision": decision,
+            "early_exit": True,
+          }
+        else:
+          final_scores = rubric_scores.get(j, {})
+          agg_final = _aggregated_with_w(final_scores, w) if final_scores else q_val
+          if agg_final >= tau_keep:
+            decision = "keep"
+            kept += 1
+            per_source[src]["kept"] += 1
+          elif agg_final < tau_drop:
+            decision = "drop"
+            dropped += 1
+            per_source[src]["dropped"] += 1
+          else:
+            decision = "band"
+            band += 1
+            per_source[src]["band"] += 1
+          out_row = {
+            "doc_id": rec["doc_id"],
+            "source": src,
+            "q_probe": q_val,
+            "scores": final_scores,
+            "aggregated": agg_final,
+            "decision": decision,
+            "early_exit": False,
+          }
+        outf.write(json.dumps(out_row, ensure_ascii=False) + "\n")
 
-                # Simple threshold: keep vs band (no early drop without probe)
-                if agg_final >= tau_keep:
-                    decision = "keep"
-                    kept += 1
-                else:
-                    decision = "band"
-                    band += 1
-                c = per_source.get(rec["source"], (0, 0, 0))
-                if decision == "keep":
-                    per_source[rec["source"]] = (c[0] + 1, c[1], c[2])
-                else:  # band
-                    per_source[rec["source"]] = (c[0], c[1], c[2] + 1)
+      # Progress
+      if total % (B * 10) == 0:
+        elapsed = time.perf_counter() - t_start
+        rate = total / elapsed if elapsed > 0 else 0
+        print(f"[hydra] processed {total} docs | kept={kept} dropped={dropped} band={band} early_exit={early_exits} | {rate:.1f} docs/s")
 
-                out_row = {
-                    "doc_id": rec["doc_id"],
-                    "source": rec["source"],
-                    "scores": final_scores,
-                    "aggregated": agg_final,
-                    "decision": decision,
-                }
-                outf.write(json.dumps(out_row, ensure_ascii=False) + "\n")
-            chunk = []
+      chunk = []
 
-        if chunk:
-            total += len(chunk)
-            if getattr(args, "input_docids", None):
-                import numpy as np
-                toks_list = []
-                for r in chunk:
-                    d = parse_doc_id(r["doc_id"])
-                    arr = np.load(shard_path(args.data_root, d), mmap_mode="r")
-                    toks = arr[int(d.start) : int(d.end)].tolist()
-                    toks_list.append(toks[: args.max_ctx])
-                max_len = max(len(t) for t in toks_list)
-                input_ids = torch.zeros(len(toks_list), max_len, dtype=torch.long)
-                positions = torch.zeros(len(toks_list), max_len, dtype=torch.long)
-                for j2, t in enumerate(toks_list):
-                    n = len(t)
-                    if n:
-                        input_ids[j2, :n] = torch.tensor(t, dtype=torch.long)
-                        positions[j2, :n] = torch.arange(n, dtype=torch.long)
-            else:
-                texts = [r["text"] for r in chunk]
-                input_ids, positions = _tokenize_batch(texts, max_ctx=args.max_ctx)
-            input_ids = input_ids.to(device)
-            positions = positions.to(device)
-            with torch.no_grad():
-                _, h = model(
-                    input_ids,
-                    positions,
-                    return_hidden_states=True,
-                    up_to_layer=model.config.num_hidden_layers,
-                    no_logits=True,
-                )
-                h24 = h.get(24)
-                if h24 is None:
-                    raise RuntimeError("Missing hidden state at layer 24")
+    # Final chunk
+    if chunk:
+      total += len(chunk)
+      if getattr(args, "input_docids", None):
+        toks_list = []
+        for r in chunk:
+          d = parse_doc_id(r["doc_id"])
+          arr = np.load(shard_path(args.data_root, d), mmap_mode="r")
+          toks = arr[int(d.start) : int(d.end)].tolist()
+          toks_list.append(toks[: args.max_ctx])
+        max_len = max(len(t) for t in toks_list) if toks_list else 1
+        input_ids = torch.zeros(len(toks_list), max_len, dtype=torch.long)
+        positions = torch.zeros(len(toks_list), max_len, dtype=torch.long)
+        for j2, t in enumerate(toks_list):
+          n = len(t)
+          if n:
+            input_ids[j2, :n] = torch.tensor(t, dtype=torch.long)
+            positions[j2, :n] = torch.arange(n, dtype=torch.long)
+      else:
+        texts = [r["text"] for r in chunk]
+        input_ids, positions = _tokenize_batch(texts, max_ctx=args.max_ctx)
 
-            for j, rec in enumerate(chunk):
-                with torch.no_grad():
-                    s0, s1 = judge(h24[j : j + 1], teacher_scores=None)
-                    sj = s1 if s1 is not None else s0
-                    sj = torch.clamp(sj, 0.0, 4.0)[0]
-                final_scores = {k: float(sj[idx].item()) for idx, k in enumerate(["helpfulness", "correctness", "coherence", "complexity", "density"]) }
-                agg_final = _aggregated_with_w(final_scores, w)
-                if agg_final >= tau_keep:
-                    decision = "keep"
-                    kept += 1
-                else:
-                    decision = "band"
-                    band += 1
-                c = per_source.get(rec["source"], (0, 0, 0))
-                if decision == "keep":
-                    per_source[rec["source"]] = (c[0] + 1, c[1], c[2])
-                else:
-                    per_source[rec["source"]] = (c[0], c[1], c[2] + 1)
-                out_row = {
-                    "doc_id": rec["doc_id"],
-                    "source": rec["source"],
-                    "scores": final_scores,
-                    "aggregated": agg_final,
-                    "decision": decision,
-                }
-                outf.write(json.dumps(out_row, ensure_ascii=False) + "\n")
+      input_ids = input_ids.to(device)
+      positions = positions.to(device)
 
-    out_tmp_path.replace(out_path)
-    summary = {
-        "total": total,
-        "kept": kept,
-        "dropped": dropped,
-        "band": band,
-        "per_source": {k: {"kept": v[0], "dropped": v[1], "band": v[2]} for k, v in per_source.items()},
-        "tau_drop": tau_drop,
-        "tau_keep": tau_keep,
-    }
-    with summary_tmp_path.open("w", encoding="utf-8") as f:
-        json.dump(summary, f, indent=2)
-    summary_tmp_path.replace(summary_path)
-    print(json.dumps(summary, indent=2))
-    return 0
+      with torch.no_grad():
+        _, h18_dict = model(input_ids, positions, return_hidden_states=True, up_to_layer=18, no_logits=True)
+        h18 = h18_dict.get(18)
+        h18_pooled = pool_hidden(h18).float()
+        probe_out = probe(h18_pooled.to(dtype=probe_dtype))
+        q_probe = probe_out["gate"]
+
+        if use_early_exit:
+          need_judge = q_probe >= tau_drop
+        else:
+          need_judge = torch.ones(len(chunk), dtype=torch.bool, device=device)
+
+        judge_indices = need_judge.nonzero(as_tuple=True)[0].tolist()
+        rubric_scores = {}
+        if judge_indices:
+          judge_input_ids = input_ids[judge_indices]
+          judge_positions = positions[judge_indices]
+          _, h24_dict = model(judge_input_ids, judge_positions, return_hidden_states=True, up_to_layer=model.config.num_hidden_layers, no_logits=True)
+          h24 = h24_dict.get(24)
+          h24f = torch.nan_to_num(h24, nan=0.0).float()
+          h24f = ln24(h24f).to(dtype=judge_dtype)
+          sj = judge(h24f)
+          sj = torch.clamp(sj, 0.0, 4.0)
+          for k, orig_j in enumerate(judge_indices):
+            rubric_scores[orig_j] = {
+              dim: float(sj[k, idx].item())
+              for idx, dim in enumerate(["helpfulness", "correctness", "coherence", "complexity", "density"])
+            }
+
+      for j, rec in enumerate(chunk):
+        q_val = float(q_probe[j].item())
+        src = rec["source"]
+        if src not in per_source:
+          per_source[src] = {"kept": 0, "dropped": 0, "band": 0, "early_exit": 0}
+        if not need_judge[j]:
+          dropped += 1
+          early_exits += 1
+          per_source[src]["dropped"] += 1
+          per_source[src]["early_exit"] += 1
+          out_row = {"doc_id": rec["doc_id"], "source": src, "q_probe": q_val, "scores": None, "aggregated": q_val, "decision": "drop", "early_exit": True}
+        else:
+          final_scores = rubric_scores.get(j, {})
+          agg_final = _aggregated_with_w(final_scores, w) if final_scores else q_val
+          if agg_final >= tau_keep:
+            decision = "keep"
+            kept += 1
+            per_source[src]["kept"] += 1
+          elif agg_final < tau_drop:
+            decision = "drop"
+            dropped += 1
+            per_source[src]["dropped"] += 1
+          else:
+            decision = "band"
+            band += 1
+            per_source[src]["band"] += 1
+          out_row = {"doc_id": rec["doc_id"], "source": src, "q_probe": q_val, "scores": final_scores, "aggregated": agg_final, "decision": decision, "early_exit": False}
+        outf.write(json.dumps(out_row, ensure_ascii=False) + "\n")
+
+  out_tmp_path.replace(out_path)
+  elapsed = time.perf_counter() - t_start
+  summary = {
+    "total": total,
+    "kept": kept,
+    "dropped": dropped,
+    "band": band,
+    "early_exits": early_exits,
+    "early_exit_rate": early_exits / max(1, total),
+    "keep_rate": kept / max(1, total),
+    "per_source": per_source,
+    "tau_drop": tau_drop,
+    "tau_keep": tau_keep,
+    "elapsed_sec": elapsed,
+    "docs_per_sec": total / elapsed if elapsed > 0 else 0,
+  }
+  with summary_path.open("w", encoding="utf-8") as f:
+    json.dump(summary, f, indent=2)
+  print(json.dumps(summary, indent=2))
+  return 0
 
 
 def build_argparser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser("nmoe.data.hydra")
-    sp = p.add_subparsers(dest="cmd", required=True)
+  p = argparse.ArgumentParser("nmoe.data.hydra")
+  sp = p.add_subparsers(dest="cmd", required=True)
 
-    p_label = sp.add_parser("oracle-label", help="Label data with 120B oracle")
-    g_label = p_label.add_mutually_exclusive_group(required=True)
-    g_label.add_argument("--input-jsonl", dest="input_jsonl")
-    g_label.add_argument("--input-docids", dest="input_docids")
-    p_label.add_argument("--data-root", help="Data root for shard paths when using --input-docids")
-    p_label.add_argument("--checkpoint", required=True)
-    p_label.add_argument("--out", required=True)
-    p_label.add_argument("--max-new", dest="max_new", type=int, default=2048)
-    p_label.add_argument("--max-ctx", dest="max_ctx", type=int, default=4096)
-    p_label.add_argument("--max-batch", dest="max_batch", type=int, default=32)
-    p_label.set_defaults(func=cmd_oracle_label)
+  # Oracle labeling (120B backbone)
+  p_label = sp.add_parser("oracle-label", help="Label data with 120B oracle")
+  g_label = p_label.add_mutually_exclusive_group(required=True)
+  g_label.add_argument("--input-jsonl", dest="input_jsonl")
+  g_label.add_argument("--input-docids", dest="input_docids")
+  p_label.add_argument("--data-root", help="Data root for shard paths when using --input-docids")
+  p_label.add_argument("--checkpoint", required=True)
+  p_label.add_argument("--out", required=True)
+  p_label.add_argument("--max-new", dest="max_new", type=int, default=2048)
+  p_label.add_argument("--max-ctx", dest="max_ctx", type=int, default=4096)
+  p_label.add_argument("--max-batch", dest="max_batch", type=int, default=32)
+  p_label.set_defaults(func=cmd_oracle_label)
 
-    p_cal = sp.add_parser("calibrate", help="Fit aggregation weights and thresholds from labels.jsonl")
-    p_cal.add_argument("--labels", required=True)
-    p_cal.add_argument("--out", required=True)
-    p_cal.add_argument("--target-keep", default=0.5)
-    p_cal.set_defaults(func=cmd_calibrate)
+  # Calibration
+  p_cal = sp.add_parser("calibrate", help="Fit aggregation weights and thresholds from labels.jsonl")
+  p_cal.add_argument("--labels", required=True)
+  p_cal.add_argument("--out", required=True)
+  p_cal.add_argument("--target-keep", default=0.5)
+  p_cal.set_defaults(func=cmd_calibrate)
 
-    p_grade = sp.add_parser("grade", help="Grade a corpus with HYDRA 20B (requires trained heads)")
-    g_grade = p_grade.add_mutually_exclusive_group(required=True)
-    g_grade.add_argument("--input-jsonl")
-    g_grade.add_argument("--input-docids")
-    p_grade.add_argument("--data-root", help="Data root for shard paths when using --input-docids")
-    p_grade.add_argument("--checkpoint", required=True, help="20B backbone checkpoint dir")
-    p_grade.add_argument("--heads-dir", required=True, help="Dir containing hydra_probe.pt and hydra_judge.pt")
-    p_grade.add_argument("--calibration", required=True, help="Dir containing calibration_summary.json")
-    p_grade.add_argument("--out", required=True)
-    p_grade.add_argument("--max-ctx", dest="max_ctx", type=int, default=4096)
-    p_grade.add_argument("--max-batch", dest="max_batch", type=int, default=16)
-    p_grade.set_defaults(func=cmd_grade)
+  # Grading (20B backbone + trained heads)
+  p_grade = sp.add_parser("grade", help="Grade a corpus with HYDRA (probe early exit + judge final)")
+  g_grade = p_grade.add_mutually_exclusive_group(required=True)
+  g_grade.add_argument("--input-jsonl")
+  g_grade.add_argument("--input-docids")
+  p_grade.add_argument("--data-root", help="Data root for shard paths when using --input-docids")
+  p_grade.add_argument("--checkpoint", required=True, help="20B backbone checkpoint dir")
+  p_grade.add_argument("--heads-dir", required=True, help="Dir containing hydra_probe*.pt and hydra_judge*.pt")
+  p_grade.add_argument("--calibration", required=True, help="Dir containing calibration_summary.json")
+  p_grade.add_argument("--out", required=True)
+  p_grade.add_argument("--max-ctx", dest="max_ctx", type=int, default=4096)
+  p_grade.add_argument("--max-batch", dest="max_batch", type=int, default=16)
+  p_grade.add_argument("--no-early-exit", dest="no_early_exit", action="store_true",
+                       help="Disable probe early exit (always run full L24)")
+  p_grade.set_defaults(func=cmd_grade)
 
-    return p
+  return p
 
 
 def main(argv: List[str] | None = None) -> int:
-    ap = build_argparser()
-    args = ap.parse_args(argv)
-    return args.func(args)
+  ap = build_argparser()
+  args = ap.parse_args(argv)
+  return args.func(args)
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+  raise SystemExit(main())

@@ -1,0 +1,341 @@
+# OLMo‑3‑1025‑7B exact mixtures (tokens in billions), temperatures = 1.0
+# HuggingFace source mappings for prep-mixture CLI
+#
+# Source: https://huggingface.co/datasets/allenai/dolma3_mix-6T-1025
+# Source: https://huggingface.co/datasets/allenai/dolma3_dolmino_pool
+
+[profiles]
+pretrain_profile = "olmo3_1025_pretrain_6T"
+midtrain_profile = "olmo3_1025_dolmino_100B"
+longctx_profile  = "olmo3_1025_longmino_50B"
+
+###############################################################################
+# Stage 1 — Dolma3 Mix (≈5.93T tokens total)
+# Dataset: allenai/dolma3_mix-6T-1025
+# Data is organized in subfolders by source type within the dataset.
+###############################################################################
+[mixtures.olmo3_1025_pretrain_6T]
+total_tokens_b = 5930.0
+sample_temperature = 1.0
+
+[[mixtures.olmo3_1025_pretrain_6T.sources]]
+id = "common_crawl"
+tokens_b = 4510.0
+percent = 76.07
+hf_dataset = "allenai/dolma3_mix-6T-1025"
+hf_split = "train"
+text_field = "text"
+hf_data_files = "data/common_crawl-*/**/*.jsonl.zst"
+
+[[mixtures.olmo3_1025_pretrain_6T.sources]]
+id = "olmocr_science_pdfs"
+tokens_b = 805.0
+percent = 13.57
+hf_dataset = "allenai/dolma3_mix-6T-1025"
+hf_split = "train"
+text_field = "text"
+hf_data_files = "data/olmocr_science_pdfs-*/**/*.jsonl.zst"
+
+[[mixtures.olmo3_1025_pretrain_6T.sources]]
+id = "stack_edu"
+tokens_b = 409.0
+percent = 6.89
+hf_dataset = "allenai/dolma3_mix-6T-1025"
+hf_split = "train"
+text_field = "text"
+hf_data_files = "data/stack_edu-*/*.jsonl.zst"
+
+[[mixtures.olmo3_1025_pretrain_6T.sources]]
+id = "finemath_3plus"
+tokens_b = 151.0
+percent = 2.56
+hf_dataset = "allenai/dolma3_mix-6T-1025"
+hf_split = "train"
+text_field = "text"
+hf_data_files = "data/finemath-3plus/**/*.jsonl.zst"
+
+[[mixtures.olmo3_1025_pretrain_6T.sources]]
+id = "dolma1_7_wiki_en"
+tokens_b = 2.51
+percent = 0.04
+hf_dataset = "allenai/dolma3_mix-6T-1025"
+hf_split = "train"
+text_field = "text"
+hf_data_files = "data/dolma1_7-wiki-en/**/*.jsonl.zst"
+
+###############################################################################
+# Stage 2 — Dolmino Mix (100B tokens total)
+# Dataset: allenai/dolma3_dolmino_pool
+# Each source is a separate subset/config in the pool.
+###############################################################################
+[mixtures.olmo3_1025_dolmino_100B]
+total_tokens_b = 100.0
+sample_temperature = 1.0
+
+# Web
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "common_crawl_hq"
+tokens_b = 22.4
+percent = 22.5
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "common_crawl_hq"
+hf_split = "train"
+text_field = "text"
+
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "stem_heavy_crawl"
+tokens_b = 4.99
+percent = 5.0
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "stem_heavy_crawl"
+hf_split = "train"
+text_field = "text"
+
+# Code
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "stack_edu_fim"
+tokens_b = 10.0
+percent = 10.0
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "stack_edu_fim"
+hf_split = "train"
+text_field = "text"
+
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "cranecode"
+tokens_b = 10.0
+percent = 10.0
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "cranecode"
+hf_split = "train"
+text_field = "text"
+
+# Math
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "dolmino_math"
+tokens_b = 10.7
+percent = 10.7
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "dolmino_math"
+hf_split = "train"
+text_field = "text"
+
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "cranemath"
+tokens_b = 5.62
+percent = 5.63
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "cranemath"
+hf_split = "train"
+text_field = "text"
+
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "megamatt"
+tokens_b = 1.73
+percent = 1.73
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "megamatt"
+hf_split = "train"
+text_field = "text"
+
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "tinymath_mind"
+tokens_b = 0.898
+percent = 0.9
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "tinyMATH_mind"
+hf_split = "train"
+text_field = "text"
+
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "tinymath_pot"
+tokens_b = 0.241
+percent = 0.24
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "tinyMATH_pot"
+hf_split = "train"
+text_field = "text"
+
+# QA / RCQA
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "reddit_to_flashcards"
+tokens_b = 5.90
+percent = 5.9
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "reddit_high"
+hf_split = "train"
+text_field = "text"
+
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "wiki_to_rcqa"
+tokens_b = 3.0
+percent = 3.0
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "wiki_to_rcqa"
+hf_split = "train"
+text_field = "text"
+
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "nemotron_synth_qa"
+tokens_b = 5.0
+percent = 5.0
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "nemotron_synth_qa"
+hf_split = "train"
+text_field = "text"
+
+# Thinking / traces
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "qwq_reasoning_traces"
+tokens_b = 1.87
+percent = 1.87
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "qwq_reasoning_traces"
+hf_split = "train"
+text_field = "text"
+
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "general_reasoning_mix"
+tokens_b = 1.87
+percent = 1.87
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "r1_reasoning_traces"
+hf_split = "train"
+text_field = "text"
+
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "llama_nemotron_traces"
+tokens_b = 1.25
+percent = 1.25
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "llamanemotron_reasoning_traces"
+hf_split = "train"
+text_field = "text"
+
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "openthoughts2_traces"
+tokens_b = 1.25
+percent = 1.25
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "openthoughts2_reasoning_traces"
+hf_split = "train"
+text_field = "text"
+
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "gemini_reasoning_traces"
+tokens_b = 0.246
+percent = 0.25
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "gemini_reasoning_traces"
+hf_split = "train"
+text_field = "text"
+
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "math_meta_reasoning"
+tokens_b = 0.381
+percent = 0.38
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "math_meta_reasoning"
+hf_split = "train"
+text_field = "text"
+
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "code_meta_reasoning"
+tokens_b = 0.459
+percent = 0.46
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "code_meta_reasoning"
+hf_split = "train"
+text_field = "text"
+
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "program_verifiable"
+tokens_b = 0.159
+percent = 0.16
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "verifiable_gpt41"
+hf_split = "train"
+text_field = "text"
+
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "omr_rewrite_fullthoughts"
+tokens_b = 0.850
+percent = 0.85
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "omr_rewrite_fullthoughts"
+hf_split = "train"
+text_field = "text"
+
+# Instruction
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "tulu_3_sft"
+tokens_b = 1.1
+percent = 1.1
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "tulu_3_sft"
+hf_split = "train"
+text_field = "text"
+
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "dolmino1_flan"
+tokens_b = 5.0
+percent = 5.0
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "dolmino_1_flan"
+hf_split = "train"
+text_field = "text"
+
+# PDFs
+[[mixtures.olmo3_1025_dolmino_100B.sources]]
+id = "olmocr_science_pdfs_hq"
+tokens_b = 4.99
+percent = 5.0
+hf_dataset = "allenai/dolma3_dolmino_pool"
+hf_subset = "olmocr_science_pdfs"
+hf_split = "train"
+text_field = "text"
+
+###############################################################################
+# Stage 3 — Longmino Mix (50B tokens total)
+# NOTE: allenai/dolma3_longmino dataset not yet available on HuggingFace
+# These sources do not have hf_* mappings until the dataset is released.
+###############################################################################
+[mixtures.olmo3_1025_longmino_50B]
+total_tokens_b = 50.0
+sample_temperature = 1.0
+
+[[mixtures.olmo3_1025_longmino_50B.sources]]
+id = "midtraining_data"
+tokens_b = 33.0
+percent = 66.1
+# HF: NOT YET AVAILABLE - uses dolmino mix as base
+
+[[mixtures.olmo3_1025_longmino_50B.sources]]
+id = "lc_s2pdf_rex_32k_64k"
+tokens_b = 6.08
+percent = 12.2
+# HF: NOT YET AVAILABLE
+
+[[mixtures.olmo3_1025_longmino_50B.sources]]
+id = "lc_s2pdf_cwe_32k_64k"
+tokens_b = 1.94
+percent = 3.88
+# HF: NOT YET AVAILABLE
+
+[[mixtures.olmo3_1025_longmino_50B.sources]]
+id = "lc_s2pdf_32k_64k"
+tokens_b = 4.81
+percent = 9.63
+# HF: NOT YET AVAILABLE
+
+[[mixtures.olmo3_1025_longmino_50B.sources]]
+id = "lc_s2pdf_8k_16k"
+tokens_b = 2.27
+percent = 4.55
+# HF: NOT YET AVAILABLE
+
+[[mixtures.olmo3_1025_longmino_50B.sources]]
+id = "lc_s2pdf_16k_32k"
+tokens_b = 1.85
+percent = 3.70
+# HF: NOT YET AVAILABLE

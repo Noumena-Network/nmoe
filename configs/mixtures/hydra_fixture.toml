@@ -1,0 +1,29 @@
+# HYDRA small fixture mixture for CI / smoke tests.
+#
+# Intended usage:
+#   python -m nmoe.data.cli prep-mixture --config configs/mixtures/hydra_fixture.toml --hydra-filter --limit 500 --seed 123
+#
+# Notes:
+# - Uses a small streaming HF subset and relies on --limit to keep runtime bounded.
+# - HYDRA paths are configured here so `--hydra-filter` doesn't require extra CLI flags.
+
+[hydra]
+checkpoint = "/data/checkpoints/gpt-oss-20b"
+heads_dir = "nmoe/data"
+calibration = "nmoe/data"
+
+[profiles]
+pretrain_profile = "hydra_fixture_pretrain"
+
+[mixtures.hydra_fixture_pretrain]
+total_tokens_b = 0.001
+sample_temperature = 1.0
+
+[[mixtures.hydra_fixture_pretrain.sources]]
+id = "hydra_fixture"
+tokens_b = 0.001
+percent = 100.0
+hf_dataset = "allenai/dolma3_mix-6T-1025"
+hf_split = "train"
+text_field = "text"
+hf_data_files = ["data/dolma1_7-wiki-en/00000.jsonl.zst"]

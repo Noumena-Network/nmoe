@@ -4,6 +4,7 @@ Data source adapters for streaming from HuggingFace Datasets.
 Supports:
 - HuggingFace Hub datasets (streaming mode)
 - Local JSONL files
+- Local JSONL.zst files
 - Local text files
 
 All sources yield (doc_id, text) pairs for downstream processing.
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,7 +27,17 @@ _pyarrow = None
 def _get_datasets():
     global _datasets
     if _datasets is None:
-        import datasets
+        # HuggingFace Hub's Xet integration can spawn background threads during
+        # streaming reads. In some environments this has caused interpreter-exit
+        # crashes when runs terminate early (e.g., --limit smoke tests).
+        os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
+        try:
+            import datasets  # type: ignore
+        except Exception as e:  # pragma: no cover
+            raise RuntimeError(
+                "Missing optional dependency `datasets` (HuggingFace). "
+                "Run dataset prep inside the container image with deps installed."
+            ) from e
         _datasets = datasets
     return _datasets
 
@@ -33,7 +45,13 @@ def _get_datasets():
 def _get_pyarrow():
     global _pyarrow
     if _pyarrow is None:
-        import pyarrow as pa
+        try:
+            import pyarrow as pa  # type: ignore
+        except Exception as e:  # pragma: no cover
+            raise RuntimeError(
+                "Missing optional dependency `pyarrow` (required for Arrow/Parquet sources). "
+                "Run dataset prep inside the container image with deps installed."
+            ) from e
         _pyarrow = pa
     return _pyarrow
 
@@ -222,10 +240,12 @@ class HfFileSystemSource(DataSource):
     Bypasses datasets library to avoid pyarrow schema inference issues.
     Use this for datasets with heterogeneous metadata types (e.g., dolma3_mix).
 
-    Example:
+    Supports file-level partitioning for parallel processing:
         source = HfFileSystemSource(
             repo_id="allenai/dolma3_mix-6T-1025",
             data_files="data/olmocr_science_pdfs-*/*.jsonl.zst",
+            worker_index=0,  # This worker's index (0-based)
+            num_workers=8,   # Total number of workers
         )
     """
 
@@ -235,12 +255,17 @@ class HfFileSystemSource(DataSource):
         data_files: str,
         text_field: str = "text",
         id_field: str | None = "id",
+        worker_index: int = 0,
+        num_workers: int = 1,
     ):
         self.repo_id = repo_id
         self.data_files = data_files
         self.text_field = text_field
         self.id_field = id_field
+        self.worker_index = worker_index
+        self.num_workers = num_workers
         self._files: List[str] | None = None
+        self._all_files: List[str] | None = None  # All files before partitioning
 
     @property
     def name(self) -> str:
@@ -252,13 +277,26 @@ class HfFileSystemSource(DataSource):
         return None
 
     def _get_files(self) -> List[str]:
-        """Get list of files matching the pattern."""
+        """Get list of files matching the pattern, partitioned for this worker."""
         if self._files is None:
             from huggingface_hub import HfFileSystem
             fs = HfFileSystem()
             base = f"datasets/{self.repo_id}"
-            self._files = sorted(fs.glob(f"{base}/{self.data_files}"))
+            all_files = sorted(fs.glob(f"{base}/{self.data_files}"))
+            self._all_files = all_files
+
+            # Partition files across workers
+            if self.num_workers > 1:
+                self._files = [f for i, f in enumerate(all_files) if i % self.num_workers == self.worker_index]
+            else:
+                self._files = all_files
         return self._files
+
+    def total_file_count(self) -> int:
+        """Get total number of files (before partitioning)."""
+        if self._all_files is None:
+            self._get_files()  # Populate _all_files
+        return len(self._all_files) if self._all_files else 0
 
     def __iter__(self) -> Iterator[Document]:
         import io
@@ -356,6 +394,71 @@ class JSONLSource(DataSource):
                     idx += 1
 
 
+class JSONLZstSource(DataSource):
+    """Stream documents from local Zstandard-compressed JSONL file(s).
+
+    Each line should be a JSON object with at least a text field.
+    """
+
+    def __init__(
+        self,
+        paths: str | Path | List[str | Path],
+        text_field: str = "text",
+        id_field: str | None = "id",
+    ):
+        if isinstance(paths, (str, Path)):
+            paths = [paths]
+        self.paths = [Path(p) for p in paths]
+        self.text_field = text_field
+        self.id_field = id_field
+
+    @property
+    def name(self) -> str:
+        if len(self.paths) == 1:
+            return self.paths[0].stem
+        return f"jsonl_zst:{len(self.paths)}_files"
+
+    def estimate_size(self) -> int | None:
+        return None
+
+    def __iter__(self) -> Iterator[Document]:
+        import io
+
+        try:
+            import zstandard as zstd
+        except ModuleNotFoundError as e:
+            raise ModuleNotFoundError(
+                "zstandard is required to read local .jsonl.zst files. "
+                "Use the dataprep container (docker/Dockerfile.dataprep installs it) "
+                "or install `zstandard` into your runtime."
+            ) from e
+
+        dctx = zstd.ZstdDecompressor()
+        idx = 0
+        for path in self.paths:
+            with path.open("rb") as f:
+                with dctx.stream_reader(f) as reader:
+                    text_reader = io.TextIOWrapper(reader, encoding="utf-8")
+                    for line in text_reader:
+                        line = line.strip()
+                        if not line:
+                            continue
+
+                        obj = json.loads(line)
+                        text = obj.get(self.text_field, "")
+                        if not text:
+                            continue
+
+                        if self.id_field and self.id_field in obj:
+                            doc_id = str(obj[self.id_field])
+                        else:
+                            doc_id = f"{path.stem}:{idx}"
+
+                        metadata = {k: v for k, v in obj.items() if k != self.text_field}
+                        yield Document(doc_id=doc_id, text=text, metadata=metadata if metadata else None)
+                        idx += 1
+
+
 class TextFileSource(DataSource):
     """Stream documents from plain text files.
 
@@ -406,7 +509,15 @@ class TextFileSource(DataSource):
 class ArrowSource(DataSource):
     """Stream documents from Arrow/Parquet files.
 
-    Efficient for large datasets stored in columnar format.
+    Uses row-group streaming to handle TB-scale parquet files without
+    loading entire tables into memory.
+
+    Args:
+        paths: File path(s) to parquet/arrow files
+        text_field: Column name containing document text
+        id_field: Optional column name for document IDs
+        batch_size: Number of rows to read per batch (default: 10000)
+        columns: Optional list of columns to read (reduces memory for wide tables)
     """
 
     def __init__(
@@ -414,12 +525,21 @@ class ArrowSource(DataSource):
         paths: str | Path | List[str | Path],
         text_field: str = "text",
         id_field: str | None = None,
+        batch_size: int = 10_000,
+        columns: List[str] | None = None,
     ):
         if isinstance(paths, (str, Path)):
             paths = [paths]
         self.paths = [Path(p) for p in paths]
         self.text_field = text_field
         self.id_field = id_field
+        self.batch_size = batch_size
+        # Only read needed columns to minimize memory
+        self._columns = columns
+        if self._columns is None:
+            self._columns = [text_field]
+            if id_field:
+                self._columns.append(id_field)
 
     @property
     def name(self) -> str:
@@ -432,32 +552,301 @@ class ArrowSource(DataSource):
 
     def __iter__(self) -> Iterator[Document]:
         pa = _get_pyarrow()
-        import pyarrow.parquet as pq
+        try:
+            import pyarrow.parquet as pq  # type: ignore
+        except Exception as e:  # pragma: no cover
+            raise RuntimeError(
+                "pyarrow.parquet is required for Parquet sources. "
+                "Run dataset prep inside the container image with deps installed."
+            ) from e
 
         idx = 0
         for path in self.paths:
             if str(path).endswith(".parquet"):
-                table = pq.read_table(path)
+                # Stream by row groups - never load entire file
+                pf = pq.ParquetFile(path)
+                for batch in pf.iter_batches(
+                    batch_size=self.batch_size,
+                    columns=self._columns,
+                ):
+                    # batch is a RecordBatch
+                    text_arr = batch.column(self.text_field)
+                    id_arr = batch.column(self.id_field) if self.id_field and self.id_field in batch.schema.names else None
+
+                    for i in range(len(batch)):
+                        text = text_arr[i].as_py()
+                        if not text:
+                            continue
+
+                        if id_arr is not None:
+                            doc_id = str(id_arr[i].as_py())
+                        else:
+                            doc_id = f"{path.stem}:{idx}"
+
+                        yield Document(doc_id=doc_id, text=str(text))
+                        idx += 1
             else:
-                # Assume Arrow IPC format
+                # Arrow IPC format - stream by record batch
                 with pa.ipc.open_file(path) as reader:
-                    table = reader.read_all()
+                    for i in range(reader.num_record_batches):
+                        batch = reader.get_batch(i)
+                        text_arr = batch.column(self.text_field)
+                        id_arr = batch.column(self.id_field) if self.id_field and self.id_field in batch.schema.names else None
 
-            text_col = table.column(self.text_field)
-            id_col = table.column(self.id_field) if self.id_field and self.id_field in table.column_names else None
+                        for j in range(len(batch)):
+                            text = text_arr[j].as_py()
+                            if not text:
+                                continue
 
-            for i in range(len(table)):
-                text = str(text_col[i].as_py())
-                if not text:
-                    continue
+                            if id_arr is not None:
+                                doc_id = str(id_arr[j].as_py())
+                            else:
+                                doc_id = f"{path.stem}:{idx}"
 
-                if id_col is not None:
-                    doc_id = str(id_col[i].as_py())
+                            yield Document(doc_id=doc_id, text=str(text))
+                            idx += 1
+
+
+@dataclass
+class HydraScore:
+    """HYDRA quality score for a document."""
+    doc_id: str
+    scores: Dict[str, float]  # helpfulness, correctness, coherence, complexity, density
+    aggregated: float
+    decision: str  # keep, band, drop
+
+
+class HydraScoringSource(DataSource):
+    """Score documents with HYDRA and emit scores in metadata.
+
+    Yields ALL documents (not filtered) with HYDRA scores attached to metadata.
+    Use this when you need audit data. For filtered output, use HydraFilteredSource.
+
+    Documents are yielded with metadata["hydra"] containing:
+        - scores: Dict[str, float] (5 dimensions)
+        - aggregated: float (weighted score)
+        - decision: str (keep/band/drop)
+    """
+
+    def __init__(
+        self,
+        source: DataSource,
+        model,  # Transformer
+        judge,  # MTPJudgeHead
+        w: Dict[str, float],
+        tau_drop: float,
+        tau_keep: float,
+        batch_size: int = 32,
+        max_ctx: int = 4096,
+        device: Optional[Any] = None,
+    ):
+        self.source = source
+        self.model = model
+        self.judge = judge
+        self.w = w
+        self.tau_drop = tau_drop
+        self.tau_keep = tau_keep
+        self.batch_size = batch_size
+        self.max_ctx = max_ctx
+        self.device = device or next(model.parameters()).device
+        self._stats = {"keep": 0, "band": 0, "drop": 0, "total": 0}
+
+    @property
+    def name(self) -> str:
+        return f"{self.source.name}:hydra_scored"
+
+    def estimate_size(self) -> int | None:
+        return self.source.estimate_size()
+
+    def __iter__(self) -> Iterator[Document]:
+        import torch
+        from .hydra import grade_texts_with_local_hydra_judge
+
+        batch_docs: List[Document] = []
+        batch_texts: List[str] = []
+        batch_ids: List[str] = []
+
+        def process_batch():
+            if not batch_docs:
+                return
+            with torch.no_grad():
+                results = grade_texts_with_local_hydra_judge(
+                    model=self.model,
+                    judge=self.judge,
+                    texts=batch_texts,
+                    doc_ids=batch_ids,
+                    max_ctx=self.max_ctx,
+                    batch_size=len(batch_docs),
+                    w=self.w,
+                    tau_drop=self.tau_drop,
+                    tau_keep=self.tau_keep,
+                    device=self.device,
+                )
+            for doc, result in zip(batch_docs, results):
+                self._stats["total"] += 1
+                self._stats[result["decision"]] += 1
+                # Attach HYDRA scores to metadata
+                hydra_meta = {
+                    "scores": result["scores"],
+                    "aggregated": result["aggregated"],
+                    "decision": result["decision"],
+                }
+                if doc.metadata:
+                    doc.metadata["hydra"] = hydra_meta
                 else:
-                    doc_id = f"{path.stem}:{i}"
+                    doc.metadata = {"hydra": hydra_meta}
+                yield doc
 
-                yield Document(doc_id=doc_id, text=text)
-                idx += 1
+        for doc in self.source:
+            batch_docs.append(doc)
+            batch_texts.append(doc.text)
+            batch_ids.append(doc.doc_id)
+
+            if len(batch_docs) >= self.batch_size:
+                yield from process_batch()
+                batch_docs = []
+                batch_texts = []
+                batch_ids = []
+
+        # Handle remaining batch
+        yield from process_batch()
+
+    @property
+    def stats(self) -> Dict[str, int]:
+        return self._stats.copy()
+
+
+class HydraFilteredSource(DataSource):
+    """Score and filter documents using HYDRA quality judge.
+
+    Yields only documents with decision == "keep", but writes ALL scores
+    to an audit file when audit_path is provided.
+
+    Args:
+        source: Upstream data source
+        model: Transformer backbone
+        judge: MTPJudgeHead
+        w: Dimension weights from calibration
+        tau_drop: Drop threshold
+        tau_keep: Keep threshold
+        batch_size: Batch size for scoring
+        max_ctx: Max context length
+        audit_path: Optional path to write audit JSONL (all docs, all scores)
+        device: Torch device
+    """
+
+    def __init__(
+        self,
+        source: DataSource,
+        model,  # Transformer
+        judge,  # MTPJudgeHead
+        w: Dict[str, float],
+        tau_drop: float,
+        tau_keep: float,
+        batch_size: int = 32,
+        max_ctx: int = 4096,
+        audit_path: Optional[Path] = None,
+        device: Optional[Any] = None,
+    ):
+        self.source = source
+        self.model = model
+        self.judge = judge
+        self.w = w
+        self.tau_drop = tau_drop
+        self.tau_keep = tau_keep
+        self.batch_size = batch_size
+        self.max_ctx = max_ctx
+        self.audit_path = Path(audit_path) if audit_path else None
+        self.device = device or next(model.parameters()).device
+        self._stats = {"keep": 0, "band": 0, "drop": 0, "total": 0}
+
+    @property
+    def name(self) -> str:
+        return f"{self.source.name}:hydra_filtered"
+
+    def estimate_size(self) -> int | None:
+        return None
+
+    def __iter__(self) -> Iterator[Document]:
+        import torch
+        from .hydra import grade_texts_with_local_hydra_judge
+
+        # Open audit file if provided
+        audit_f = None
+        if self.audit_path:
+            self.audit_path.parent.mkdir(parents=True, exist_ok=True)
+            audit_f = open(self.audit_path, "w", encoding="utf-8")
+
+        batch_docs: List[Document] = []
+        batch_texts: List[str] = []
+        batch_ids: List[str] = []
+
+        def process_batch():
+            if not batch_docs:
+                return
+            with torch.no_grad():
+                results = grade_texts_with_local_hydra_judge(
+                    model=self.model,
+                    judge=self.judge,
+                    texts=batch_texts,
+                    doc_ids=batch_ids,
+                    max_ctx=self.max_ctx,
+                    batch_size=len(batch_docs),
+                    w=self.w,
+                    tau_drop=self.tau_drop,
+                    tau_keep=self.tau_keep,
+                    device=self.device,
+                )
+            for doc, result in zip(batch_docs, results):
+                decision = result["decision"]
+                self._stats["total"] += 1
+                self._stats[decision] += 1
+
+                # Write audit record (ALL documents)
+                if audit_f:
+                    audit_record = {
+                        "doc_id": doc.doc_id,
+                        "scores": result["scores"],
+                        "aggregated": result["aggregated"],
+                        "decision": decision,
+                    }
+                    audit_f.write(json.dumps(audit_record) + "\n")
+
+                # Only yield "keep" documents for training
+                if decision == "keep":
+                    # Attach scores to metadata
+                    hydra_meta = {
+                        "scores": result["scores"],
+                        "aggregated": result["aggregated"],
+                        "decision": decision,
+                    }
+                    if doc.metadata:
+                        doc.metadata["hydra"] = hydra_meta
+                    else:
+                        doc.metadata = {"hydra": hydra_meta}
+                    yield doc
+
+        try:
+            for doc in self.source:
+                batch_docs.append(doc)
+                batch_texts.append(doc.text)
+                batch_ids.append(doc.doc_id)
+
+                if len(batch_docs) >= self.batch_size:
+                    yield from process_batch()
+                    batch_docs = []
+                    batch_texts = []
+                    batch_ids = []
+
+            # Handle remaining batch
+            yield from process_batch()
+        finally:
+            if audit_f:
+                audit_f.close()
+
+    @property
+    def stats(self) -> Dict[str, int]:
+        return self._stats.copy()
 
 
 def create_source(
@@ -477,6 +866,7 @@ def create_source(
         "huggingface": HuggingFaceSource,
         "hf": HuggingFaceSource,
         "jsonl": JSONLSource,
+        "jsonl_zst": JSONLZstSource,
         "text": TextFileSource,
         "arrow": ArrowSource,
         "parquet": ArrowSource,

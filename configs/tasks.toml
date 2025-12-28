@@ -1,0 +1,292 @@
+# =============================================================================
+# nmoe Task Registry
+# =============================================================================
+#
+# Single source of truth for:
+#   1. Corpus contract (tokenizer, vocab, eos, dtype) - enforced at plan compile
+#   2. Task definitions (task_id -> shards + raw source + prep settings)
+#
+# Lifecycle: raw recipe -> prep --task X -> shards ready -> mixture uses X
+#
+# Enforcement:
+#   - Training fails if shards resolve to 0 files ("task not ready")
+#   - Prep fails if raw section is missing ("task not buildable")
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# CORPUS - Global invariants (enforced for all tasks)
+# -----------------------------------------------------------------------------
+[corpus]
+root = "/data/corpus"  # Single root, shared by all runs
+
+[corpus.contract]
+tokenizer = "o200k_harmony"
+vocab_size = 201088
+eos_token_id = 199999
+dtype = "uint32"
+append_eos = true
+
+# -----------------------------------------------------------------------------
+# PREP DEFAULTS - Applied unless overridden per-task
+# -----------------------------------------------------------------------------
+# Prep order: raw -> hygiene -> exact_dedup_text -> hydra -> tokenize ->
+#             exact_dedup_tokens -> near_dedup_tokens -> shards
+[corpus.prep_defaults]
+hygiene = true              # Cheap text normalization/filtering
+exact_dedup_text = true     # Exact hash dedup on normalized text (before tokenize)
+hydra_filter = true         # HYDRA quality scoring (after text dedup, before tokenize)
+hydra_audit = true          # Write HYDRA scores to audit sidecar
+exact_dedup_tokens = false  # Exact hash dedup on token sequences (after tokenize)
+near_dedup_tokens = false   # MinHash near-dedup on token sequences (expensive)
+
+# =============================================================================
+# TASKS
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# WEB DOMAIN
+# -----------------------------------------------------------------------------
+
+[tasks.fineweb_edu_100b]
+domain = "web"
+description = "FineWeb-Edu 100B tokens - Karpathy shuffle (educational web)"
+
+[tasks.fineweb_edu_100b.shards]
+train = "fineweb_edu_100b/train/**/*.npy"
+
+[tasks.fineweb_edu_100b.raw]
+kind = "parquet"
+glob = "/data/datasets/fineweb_edu_100b/shard_*.parquet"  # Top-level only (Karpathy shuffle)
+text_field = "text"
+id_field = "id"
+
+
+[tasks.fineweb_edu_score2]
+domain = "web"
+description = "FineWeb-Edu score>=2 subset (high quality educational)"
+
+[tasks.fineweb_edu_score2.shards]
+train = "fineweb_edu_score2/train/**/*.npy"
+
+[tasks.fineweb_edu_score2.raw]
+kind = "parquet"
+glob = "/data/datasets/fineweb_edu_score2/data/**/*.parquet"
+text_field = "text"
+id_field = "id"
+
+
+[tasks.fineweb_edu]
+domain = "web"
+description = "Full FineWeb-Edu dataset"
+
+[tasks.fineweb_edu.shards]
+train = "fineweb_edu/train/**/*.npy"
+
+[tasks.fineweb_edu.raw]
+kind = "parquet"
+glob = "/data/datasets/fineweb_edu/data/**/*.parquet"
+text_field = "text"
+id_field = "id"
+
+
+[tasks.dclm]
+domain = "web"
+description = "DCLM baseline 1.0 (DataComp-LM curated web)"
+
+[tasks.dclm.shards]
+train = "dclm/train/**/*.npy"
+
+[tasks.dclm.raw]
+kind = "jsonl_zst"
+glob = "/data/datasets/dclm/global-shard_*_of_10/local-shard_*_of_10/shard_*_processed.jsonl.zst"
+text_field = "text"
+id_field = "url"
+
+
+[tasks.dolma3_web]
+domain = "web"
+description = "Dolma3 Common Crawl web subset from 6T mix"
+
+[tasks.dolma3_web.shards]
+train = "dolma3_web/train/**/*.npy"
+
+[tasks.dolma3_web.raw]
+kind = "jsonl_zst"
+glob = "/data/datasets/dolma3_mix/data/common_crawl-*/*.jsonl.zst"
+text_field = "text"
+id_field = "id"
+
+
+[tasks.eai_math]
+domain = "math"
+description = "Essential-AI math subset"
+
+[tasks.eai_math.shards]
+train = "eai_math/train/**/*.npy"
+
+[tasks.eai_math.raw]
+kind = "parquet"
+glob = "/data/datasets/eai_math/data/*.parquet"
+text_field = "text"
+id_field = "id"
+
+
+[tasks.eai_med]
+domain = "science"
+description = "Essential-AI medical subset"
+
+[tasks.eai_med.shards]
+train = "eai_med/train/**/*.npy"
+
+[tasks.eai_med.raw]
+kind = "parquet"
+glob = "/data/datasets/eai_med/data/*.parquet"
+text_field = "text"
+id_field = "id"
+
+# -----------------------------------------------------------------------------
+# CODE DOMAIN
+# -----------------------------------------------------------------------------
+
+[tasks.stack_v2]
+domain = "code"
+description = "The Stack v2 (code), materialized via Software Heritage content fetch"
+
+[tasks.stack_v2.shards]
+train = "stack_v2/train/**/*.npy"
+
+# NOTE: /data/datasets/stack_v2 parquet schema has no `content`/`text`.
+# We materialize content into /data/datasets/stack_v2_content via:
+#   k8s/dataset-download-stack-content.yaml
+
+[tasks.stack_v2.raw]
+kind = "jsonl_zst"
+glob = "/data/datasets/stack_v2_content/nmoe-download-stack-v2-content/**/*.jsonl.zst"
+text_field = "text"
+id_field = "id"
+
+[tasks.stack_v2.prep]
+exact_dedup_text = true
+
+
+[tasks.eai_code]
+domain = "code"
+description = "Essential-AI code subset"
+
+[tasks.eai_code.shards]
+train = "eai_code/train/**/*.npy"
+
+[tasks.eai_code.raw]
+kind = "parquet"
+glob = "/data/datasets/eai_code/data/**/*.parquet"
+text_field = "text"
+id_field = "id"
+
+
+[tasks.dolma3_code]
+domain = "code"
+description = "Dolma3 Stack-Edu code subset from 6T mix"
+
+[tasks.dolma3_code.shards]
+train = "dolma3_code/train/**/*.npy"
+
+[tasks.dolma3_code.raw]
+kind = "jsonl_zst"
+glob = "/data/datasets/dolma3_mix/data/stack_edu-*/*.jsonl.zst"
+text_field = "text"
+id_field = "id"
+
+
+# -----------------------------------------------------------------------------
+# SCIENCE / STEM DOMAIN
+# -----------------------------------------------------------------------------
+
+[tasks.arxiv]
+domain = "science"
+description = "arXiv papers (LaTeX + ar5iv HTML dual-format)"
+
+[tasks.arxiv.shards]
+train = "arxiv/train/**/*.npy"
+
+[tasks.arxiv.raw]
+kind = "arxiv_s3"
+tar_dir = "/data/arxiv/s3_src"
+
+[tasks.arxiv.prep]
+exact_dedup_text = true
+
+
+[tasks.eai_stem]
+domain = "science"
+description = "Essential-AI STEM subset"
+
+[tasks.eai_stem.shards]
+train = "eai_stem/train/**/*.npy"
+
+[tasks.eai_stem.raw]
+kind = "parquet"
+glob = "/data/datasets/eai_stem/data/**/*.parquet"
+text_field = "text"
+id_field = "id"
+
+
+[tasks.dolma3_math]
+domain = "math"
+description = "Dolma3 FineMath-3plus subset from 6T mix"
+
+[tasks.dolma3_math.shards]
+train = "dolma3_math/train/**/*.npy"
+
+[tasks.dolma3_math.raw]
+kind = "jsonl_zst"
+glob = "/data/datasets/dolma3_mix/data/finemath-3plus/*.jsonl.zst"
+text_field = "text"
+id_field = "id"
+
+
+[tasks.dolma3_wiki]
+domain = "science"
+description = "Dolma3 Wikipedia subset from 6T mix"
+
+[tasks.dolma3_wiki.shards]
+train = "dolma3_wiki/train/**/*.npy"
+
+[tasks.dolma3_wiki.raw]
+kind = "jsonl_zst"
+glob = "/data/datasets/dolma3_mix/data/dolma1_7-wiki-en/*.jsonl.zst"
+text_field = "text"
+id_field = "id"
+
+
+[tasks.dolma3_arxiv]
+domain = "science"
+description = "Dolma3 arXiv (RedPajama ProofPile) subset from 6T mix"
+
+[tasks.dolma3_arxiv.shards]
+train = "dolma3_arxiv/train/**/*.npy"
+
+[tasks.dolma3_arxiv.raw]
+kind = "jsonl_zst"
+glob = "/data/datasets/dolma3_mix/data/rpj-proofpile-arxiv/*.jsonl.zst"
+text_field = "text"
+id_field = "id"
+
+
+[tasks.dolma3_science_pdfs]
+domain = "science"
+description = "Dolma3 OCR science PDFs subset from 6T mix"
+
+[tasks.dolma3_science_pdfs.shards]
+train = "dolma3_science_pdfs/train/**/*.npy"
+
+[tasks.dolma3_science_pdfs.raw]
+kind = "jsonl_zst"
+glob = "/data/datasets/dolma3_mix/data/olmocr_science_pdfs-*/*.jsonl.zst"
+text_field = "text"
+id_field = "id"
+
+# -----------------------------------------------------------------------------
+# NOTE: dolma3_mix-6T-1025 does not include books or reddit subsets.
+# Those would need to be sourced from other datasets if needed.
+# -----------------------------------------------------------------------------
