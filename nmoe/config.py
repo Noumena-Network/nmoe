@@ -44,7 +44,10 @@ class Config:
   n_dense_layers: int = 1  # First N layers are dense
 
   # Attention (MLA defaults)
-  attn: str = "mla"
+  attn: str = "mla"  # Global attention type
+  attn_local: str = "swa"  # Local attention type (used when attn_global_every > 1)
+  attn_global_every: int = 1  # Every Nth layer is global; 1 = all global
+  attn_local_window: int = 128  # Window size for local attention layers
   q_lora_rank: int = 1536
   kv_lora_rank: int = 512
   qk_nope_head_dim: int = 128
@@ -95,6 +98,7 @@ class Config:
   # Training
   # =============================================================================
   steps: int = 10000
+  exit_after: Optional[int] = None
   batch_size: int = 8
   seq_len: int = 4096
   seed: int = 42

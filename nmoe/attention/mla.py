@@ -29,6 +29,27 @@ def _nvtx(tag: str):
   return nullcontext()
 
 
+# Module-level workspace cache for MLA backward pass.
+#
+# Design goals:
+# - Avoid per-backward allocation churn (token/s stability, allocator pressure)
+# - Bounded growth: one buffer per device, grown in-place as needed
+# - Scratch-only: not part of module state / checkpoints
+_mla_workspace_cache: dict[torch.device, torch.Tensor] = {}
+
+
+def _get_mla_workspace(device: torch.device, workspace_bytes: int) -> torch.Tensor:
+  """Get a cached workspace buffer for MLA backward.
+
+  Returns a `torch.uint8` CUDA tensor with `numel() >= workspace_bytes`.
+  """
+  buf = _mla_workspace_cache.get(device)
+  if buf is None or buf.numel() < workspace_bytes:
+    buf = torch.empty((workspace_bytes,), device=device, dtype=torch.uint8)
+    _mla_workspace_cache[device] = buf
+  return buf
+
+
 class _MlaFa4FwdFlashMlaBwd(torch.autograd.Function):
   @staticmethod
   def forward(ctx, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, softmax_scale: float) -> torch.Tensor:
@@ -99,7 +120,8 @@ class _MlaFa4FwdFlashMlaBwd(torch.autograd.Function):
     workspace_bytes = 0
     workspace_bytes += 4 * bsz * max_seqlen_aligned * n_heads * d_qk  # dQ_acc
     workspace_bytes += 4 * max_seqlen_aligned * bsz * n_heads * 2  # sum_OdO + scaled_lse
-    workspace = torch.empty((workspace_bytes,), device=q.device, dtype=torch.uint8)
+    # Use cached workspace to avoid allocation churn
+    workspace = _get_mla_workspace(q.device, workspace_bytes)
 
     with _nvtx("attn/flashmla_bwd"):
       flashmla.dense_prefill_bwd(

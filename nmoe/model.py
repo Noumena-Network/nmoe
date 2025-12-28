@@ -24,6 +24,8 @@ ATTN = {
 
 
 def get_attention(name: str):
+  if name not in ATTN:
+    raise ValueError(f"Unknown attention '{name}'. Expected one of: {sorted(ATTN.keys())}")
   path = ATTN[name]
   module_path, cls_name = path.rsplit(".", 1)
   return getattr(import_module(module_path), cls_name)
@@ -137,12 +139,30 @@ class MoE(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-  def __init__(self, config: Config, layer_id: int, *, rdep: Rdep | None = None):
+  def __init__(self, config: Config, layer_id: int, *, rdep: Rdep | None = None, n_layers: int | None = None):
     super().__init__()
     self.layer_id = layer_id
     self.attn_norm = RMSNorm(config.dim, config.rms_norm_eps)
     self.ffn_norm = RMSNorm(config.dim, config.rms_norm_eps)
-    self.attn = get_attention(config.attn)(config)
+
+    global_every = int(getattr(config, "attn_global_every", 1))
+    if global_every < 1:
+      raise ValueError(f"attn_global_every must be >= 1, got {global_every}.")
+    is_last = n_layers is not None and layer_id == n_layers - 1
+    is_global = (global_every == 1) or (((layer_id + 1) % global_every) == 0) or is_last
+    attn_name = config.attn if is_global else config.attn_local
+
+    self.attn = get_attention(attn_name)(config)
+    if not is_global:
+      window = int(getattr(config, "attn_local_window", 0))
+      if window <= 0:
+        raise ValueError(f"attn_local_window must be > 0 when using local attention, got {window}.")
+      if not hasattr(self.attn, "window"):
+        raise ValueError(
+          f"Local attention '{attn_name}' does not expose a 'window' attribute, "
+          f"but attn_local_window={window} was requested."
+        )
+      self.attn.window = window
     self.is_moe = layer_id >= config.n_dense_layers
     if layer_id < config.n_dense_layers:
       self.ffn = MLP(dim=config.dim, inter_dim=config.inter_dim)
@@ -150,7 +170,7 @@ class TransformerBlock(nn.Module):
       if rdep is None:
         raise ValueError("MoE layers require an Rdep instance")
       self.ffn = MoE(config, layer_id, rdep=rdep)
-    # Depth-dependent initialization std (DeepSeek-V3)
+    # Depth-dependent initialization std.
     self.init_std = 0.02 / (2 * (layer_id + 1)) ** 0.5
 
   def init_weights(self):
@@ -194,7 +214,7 @@ class Transformer(nn.Module):
       ntk_beta=config.rope_ntk_beta,
     )
     self.blocks = nn.ModuleList([
-      TransformerBlock(config, layer_id, rdep=rdep)
+      TransformerBlock(config, layer_id, rdep=rdep, n_layers=config.n_layers)
       for layer_id in range(config.n_layers)
     ])
     self.norm = RMSNorm(config.dim, config.rms_norm_eps)
@@ -228,8 +248,8 @@ class Transformer(nn.Module):
     with record_function("embedding"):
       x = self.embedding(tokens) * self.mup_scale_factor
     seqlen = tokens.size(1)
-    cos = self.rope.cos[:seqlen].to(tokens.device)
-    sin = self.rope.sin[:seqlen].to(tokens.device)
+    cos = self.rope.cos[:seqlen]
+    sin = self.rope.sin[:seqlen]
     for block in self.blocks:
       x = block(x, cos, sin)
     with torch.no_grad():

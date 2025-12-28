@@ -115,9 +115,22 @@ nmoe/
 ├── metrics.py        # DuckDB writer
 ├── csrc/             # CUDA kernels
 ├── data/             # Data pipeline, HYDRA
-├── attention/        # MLA, DSA, SWA
+├── attention/        # MLA, DSA, SWA, NSA, KDA
 └── eval/             # Evaluation hooks
 ```
+
+## Attention
+
+Default is MLA (Multi-head Latent Attention) for all layers. Global/local mixing uses MLA for global layers and SWA (Sliding Window) for local layers:
+
+```toml
+attn = "mla"              # Global attention type
+attn_local = "swa"        # Local attention type
+attn_global_every = 6     # Pattern: 5 local + 1 global, repeating
+attn_local_window = 128   # SWA window size
+```
+
+With `attn_global_every = 6`, layers 0-4 use SWA, layer 5 uses MLA, layers 6-10 use SWA, layer 11 uses MLA, etc. The final layer is always global.
 
 ## What's Inside
 

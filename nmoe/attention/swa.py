@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.profiler import record_function
 
 from nmoe.attention.rope import rotate_pe
@@ -12,21 +11,26 @@ class SWA(nn.Module):
   """Sliding-Window Attention wrapper around Triton kernel (nmoe.triton.swa).
 
   Fused QKV + OUT + learned sinks. Applies RoPE to q,k and calls the kernel with
-  layout expected by SWA: q[B,T,Hkv,G,D], k[B,T,Hkv,D], v[B,T,Hkv,D]. For now we
-  assume GQA groups = 1 (Hkv == H), which is sufficient for initial integration
-  and weight conversion from gpt-oss.
+  layout expected by SWA: q[B,T,Hkv,G,D], k[B,T,Hkv,D], v[B,T,Hkv,D].
   """
 
   def __init__(self, config: Config):
     super().__init__()
     self.dim = config.dim
     self.n_heads = config.n_heads
-    self.head_dim = config.v_head_dim
-    qk_dim = config.qk_nope_head_dim + config.qk_rope_head_dim
-    if qk_dim != self.head_dim:
+    self.head_dim = int(config.v_head_dim)
+    if self.head_dim not in (16, 32, 64, 128, 256):
+      raise RuntimeError(f"SWA requires head_dim in {{16,32,64,128,256}}, got {self.head_dim}.")
+
+    self.rope_dim = int(getattr(config, "qk_rope_head_dim", 0))
+    if self.rope_dim < 0 or self.rope_dim > self.head_dim:
       raise RuntimeError(
-        f"SWA requires qk_head_dim == v_head_dim (got {qk_dim} vs {self.head_dim})."
+        f"SWA requires 0 <= qk_rope_head_dim <= v_head_dim. Got qk_rope_head_dim={self.rope_dim}, v_head_dim={self.head_dim}."
       )
+    if self.rope_dim % 2 != 0:
+      raise RuntimeError(f"SWA requires rope_dim to be even, got {self.rope_dim}.")
+    self.nope_dim = self.head_dim - self.rope_dim
+
     swa_opts = getattr(config, "attn_swa", {}) or {}
     self.n_kv_heads = int(swa_opts.get("kv_heads", self.n_heads))
     if self.n_heads % self.n_kv_heads != 0:
@@ -38,6 +42,8 @@ class SWA(nn.Module):
     self.sinks = nn.Parameter(torch.zeros(self.n_heads, dtype=torch.bfloat16))
     self.window = 0
     self.softmax_scale = self.head_dim ** -0.5
+    # Cache start_q to avoid per-forward allocation
+    self.register_buffer('start_q', torch.zeros(1, dtype=torch.int32), persistent=False)
 
   def init_weights(self, init_std: float = 0.02):
     nn.init.trunc_normal_(self.qkv.weight, mean=0.0, std=0.02)
@@ -55,20 +61,25 @@ class SWA(nn.Module):
     qkv = self.qkv(x)
     H, KV, D = self.n_heads, self.n_kv_heads, self.head_dim
     q, k, v = torch.split(qkv, [H * D, KV * D, KV * D], dim=-1)
-    q = q.view(B, T, H, D)
-    k = k.view(B, T, KV, D)
+    # split() returns views that share storage with qkv; make q/k materialize
+    # their own storage before any in-place slice writes (autograd restriction).
+    q = q.view(B, T, H, D).contiguous()
+    k = k.view(B, T, KV, D).contiguous()
     v = v.view(B, T, KV, D)
 
-    q = rotate_pe(q, cos, sin)
-    k = rotate_pe(k, cos, sin)
+    if self.rope_dim:
+      q_rope = rotate_pe(q[..., self.nope_dim:], cos, sin)
+      q[..., self.nope_dim:].copy_(q_rope)
+      k_rope = rotate_pe(k[..., self.nope_dim:], cos, sin)
+      k[..., self.nope_dim:].copy_(k_rope)
 
     G = self.repeat_kv
     assert H == KV * G, f"Heads must satisfy H = KV*G (got H={H}, KV={KV}, G={G})"
     q = q.view(B, T, KV, G, D)
 
-    start_q = torch.tensor([0], dtype=torch.int32, device=x.device)
+    # Use cached start_q buffer (already on correct device via register_buffer)
     bandwidth = int(self.window) if self.window and self.window > 0 else 0
 
     with record_function("attn.kernel[swa]"):
-      o = swa_k.attention(q, k, v, self.sinks, self.softmax_scale, bandwidth, start_q)
+      o = swa_k.attention(q, k, v, self.sinks, self.softmax_scale, bandwidth, self.start_q)
     return self.out(o)

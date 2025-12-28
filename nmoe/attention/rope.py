@@ -5,9 +5,14 @@ from torch import nn
 
 
 def rotate_pe(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
-  """Apply rotary position embedding to tensor x."""
-  cos = cos[:x.size(1), :].unsqueeze(-2).to(x.dtype)
-  sin = sin[:x.size(1), :].unsqueeze(-2).to(x.dtype)
+  """Apply rotary position embedding to tensor x.
+
+  Note: cos/sin are expected to be pre-sliced to seqlen and pre-cast to x.dtype
+  (done in Transformer.forward and RotaryEmbedding.__init__).
+  """
+  # cos/sin: [seqlen, head_dim//2] -> [seqlen, 1, head_dim//2] for broadcasting
+  cos = cos[:x.size(1), :].unsqueeze(-2)
+  sin = sin[:x.size(1), :].unsqueeze(-2)
   half = x.size(-1) // 2
   x1 = x[..., :half]
   x2 = x[..., half:]
@@ -40,7 +45,10 @@ class RotaryEmbedding(nn.Module):
     self.ntk_alpha = ntk_alpha
     self.ntk_beta = ntk_beta
     self.device = device
-    self.cos, self.sin = self._compute_cos_sin(0, self.max_context_length)
+    cos, sin = self._compute_cos_sin(0, self.max_context_length)
+    # Register as buffers so they move with model.cuda() and pre-cast to target dtype
+    self.register_buffer('cos', cos.to(dtype), persistent=False)
+    self.register_buffer('sin', sin.to(dtype), persistent=False)
 
   def _compute_concentration_and_inv_freq(self) -> torch.Tensor:
     freq = self.base ** (torch.arange(0, self.head_dim, 2, dtype=torch.float, device=self.device) / self.head_dim)
