@@ -1,164 +1,289 @@
-# AI_WORKFLOW (nmoe)
+# AI Agent Workflow
 
-This repo is optimized for **parallel AI-agent development** with a **merge-captain** workflow and **maintainer-controlled B200 integration gates**.
+This document describes the contract-first workflow for AI agents (Claude Code, Codex, etc.) working on nmoe.
 
-If you read only one thing: **Issues are contracts** and **PRs are attestations**.
+## Overview
 
-## Non-negotiables (public repo)
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Create    │     │   Create    │     │   Agent     │     │   Create    │     │   Merge     │
+│   Issue     │ ──▶ │  Worktree   │ ──▶ │  Iterates   │ ──▶ │    PR       │ ──▶ │   Down      │
+│ (Contract)  │     │  + Branch   │     │ Until Pass  │     │(Attestation)│     │             │
+└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+```
 
-- **No internal infra** in GitHub Issues/PRs or tracked docs:
-  - no hostnames, namespaces, pod names, PVCs, internal URLs, or runbooks
-  - no credentials, tokens, kubeconfigs
-- **Container-first**: supported execution path is via `docker/` + TOML configs.
-- **B200-only** (`sm_100a`): fail fast off-target; no silent downshift/fallbacks.
-- **No NCCL all-to-all on the MoE path** (RDEP only).
+## Coordinator checklist (no extra context)
 
-## Roles
+Use this when acting as the coordinator/merge captain (human or AI).
 
-- **Coordinator / Merge captain** (human or AI): creates issues, assigns work, ensures gates and sequencing, merges to `master`.
-- **Agent implementer** (human or AI): works in an isolated worktree, stays within scope, makes gates pass, opens PR.
-- **Maintainer**: approves and runs Tier‑B (B200) gates (via GitHub Environment protection), and approves merges.
+1. Create one GitHub Issue per PR using `work_item.yml` (the contract is the source of truth).
+2. Ensure the contract includes:
+   - strict `scope.allow` / `scope.deny`
+   - required `gates` (IDs from `configs/gates/gates.toml`)
+   - explicit perf budget (if hot path)
+   - `depends_on` and `merge_hotspots` (for merge sequencing)
+3. Create a dedicated worktree + branch from `origin/master` (one worktree per issue) and assign an agent.
+4. Agent iterates until Tier A passes and commits are clean + issue-scoped.
+5. Agent opens a PR with the attestation block filled (Tier A evidence).
+6. Maintainer triggers Tier B on the PR merge ref (`refs/pull/<PR>/merge`) with the appropriate bundle.
+7. Merge only after Tier B reports pass (and sequencing constraints are satisfied).
 
-## Canonical artifacts
+## 1. Create Issue (Contract)
 
-- **Issue contract**: a structured YAML block in the GitHub issue body (template: `work_item.yml`).
-- **PR attestation**: a structured YAML block at the top of the PR description (template: `pull_request_template.md`).
-- **Gate registry**: `configs/gates/gates.toml` (gate IDs + bundles + required env/files).
-- **Tier‑B runner workflow**: `.github/workflows/tier-b.yml` (maintainer-controlled).
+Issues are **agent contracts** - structured specs that agents follow without back-and-forth.
 
-## Gate model
+### Using the template
 
-### Tier A (CPU/container) — agent-run
+Create issue at: https://github.com/Noumena-Network/nmoe/issues/new?template=work_item.yml
 
-Gate IDs (stable):
-- `cpu:import`
-- `cpu:compileall`
+### Contract structure
 
-Tier A should be run by the agent before opening a PR (or at least before asking for review).
+```yaml
+nmoe:
+  issue: 03a
+  slug: attention
+  kind: feature          # feature|bugfix|perf|refactor|docs
+  risk: hot              # hot|warm|cold
+  complexity: M          # S|M|L
+  depends_on: [01]       # issue numbers this blocks on
+  merge_hotspots: [nmoe/train.py, nmoe/config.py]
 
-### Tier B (B200) — maintainer-run, integration-correct
+scope:
+  allow:                 # files agent MAY modify
+    - nmoe/attention/**
+    - nmoe/model.py
+  deny:                  # files agent MUST NOT touch
+    - nmoe/csrc/**
 
-Tier B is triggered manually and runs against `refs/pull/<PR>/merge` (the merge result), not the PR head.
+contract:
+  invariants:
+    - B200-only (sm_100a); fail off-target
+    - No NCCL all-to-all on MoE path
+    - TOML-only config; container-first
+  knobs:
+    add: []
+    change: [attn_global_every, attn_local_window]
 
-Gate bundles (stable):
-- `hot_path_min`
-- `blockscaled_full`
-- `zero2_full`
-- `frozen_full`
-- `full`
-- `single` (debug: one gate id)
+gates:
+  required:              # gate IDs from configs/gates/gates.toml
+    - cpu:import
+    - cpu:compileall
+    - b200:moonlight_8x20
+  perf:
+    gate: perf:baseline_delta
+    metric: node_tps_p50
+    baseline_ref: origin/master
+    budget_pct: -10
+```
 
-Tier B posts a **sanitized** results table as a PR comment and also writes a job summary.
+### Key properties
 
-## Creating a work item (one issue per PR)
+- **Deterministic**: Agent doesn't invent commands - uses gate IDs
+- **Scoped**: Explicit allow/deny file lists; no drive-bys
+- **Merge-aware**: Declares expected conflict hotspots
+- **Public-safe**: No internal paths/hostnames
 
-Create an issue using the **Work item (agent contract)** template:
-- `.github/ISSUE_TEMPLATE/work_item.yml`
+## 2. Create Worktree + Branch
 
-### What a good contract includes
-
-- `scope.allow` / `scope.deny` (strict; no drive-bys)
-- `contract.invariants` (B200-only, no A2A, TOML-only, determinism when applicable)
-- `gates.required` (gate IDs only; do not paste cluster commands)
-- `gates.perf` (if hot path; budget is explicit)
-- `depends_on` + `merge_hotspots` (helps parallel planning)
-
-The contract should be complete enough that an AI agent can execute without additional context.
-
-## Starting work (branch + worktree)
-
-Create an isolated worktree per issue. Naming convention:
-- Worktree: `../nmoe-worktrees/issue-<NN>-<slug>`
-- Branch: `issue/<NN>-<slug>`
-
-Example:
 ```bash
-git fetch origin
+# Create isolated worktree for the issue
 ISSUE=03a
 SLUG=attention
 git worktree add ../nmoe-worktrees/issue-${ISSUE}-${SLUG} -b issue/${ISSUE}-${SLUG} origin/master
+
+# Agent works in the worktree
 cd ../nmoe-worktrees/issue-${ISSUE}-${SLUG}
 ```
 
-Parallelism: run many issues in parallel via separate worktrees; coordinate via `depends_on` and shared-file hotspots.
+## 3. Agent Iterates Until Gates Pass
 
-## Implementing (agent loop)
+### Agent reads the contract
 
-The agent implementer:
-1) Reads the issue contract.
-2) Stays inside `scope.allow` (and avoids `scope.deny`).
-3) Makes Tier‑A gates pass.
-4) Commits clean, issue-scoped changes.
+The agent:
+1. Reads the issue contract
+2. Understands scope (allow/deny lists)
+3. Knows which gates must pass
+4. Works within invariants
 
-Tier‑A commands:
+### Running Tier A gates locally
+
 ```bash
-python -c "import nmoe"          # cpu:import
-python -m compileall -q nmoe/    # cpu:compileall
+# Tier A: CPU/container gates (agent runs these)
+python -c "import nmoe"                    # cpu:import
+python -m compileall -q nmoe/              # cpu:compileall
 ```
 
-## Opening a PR (attestation)
+### Tier B gates (cluster)
 
-PRs must include the **PR Attestation YAML** at the top:
-- `.github/pull_request_template.md`
+Tier B gates require B200 GPUs and are run by the maintainer after PR creation.
 
-The agent fills:
-- `issue`, `risk`
-- Tier‑A gates run
-- (if perf is claimed / hot path) `baseline_sha`
+Gate definitions are in `configs/gates/gates.toml`.
+Tier B gates fail fast if required environment variables (listed as `requires` in the gate registry) are missing.
 
-Tier‑B is filled after the maintainer runs the Tier‑B workflow.
+## 4. Create PR (Attestation)
 
-Create PR (recommended: GitHub CLI):
-```bash
-git push origin HEAD
-gh pr create --base master
+PRs carry a structured **attestation block** documenting what was done.
+
+### PR template
+
+```yaml
+nmoe_pr:
+  issue: 03a
+  baseline_sha: 99fae30
+  pr_sha: e79e342
+  risk: hot
+
+gates_passed:
+  tier_a:
+    - cpu:import
+    - cpu:compileall
+  tier_b: []              # filled after maintainer runs workflow
+
+perf:
+  gate: perf:baseline_delta
+  metric: node_tps_p50
+  baseline: <number>
+  result: <number>
+  delta_pct: <number>
+  budget_pct: -10
+  status: pass|fail
 ```
 
-## Running Tier‑B (maintainer-controlled)
+### Creating the PR
 
-Tier‑B is triggered manually (GitHub Actions → “Tier B gates (B200, maintainer-controlled)”).
+```bash
+# Push branch
+git push origin issue/03a-attention
 
-Inputs:
-- `pr_number`: PR number
-- `bundle`: one of the bundle names (or `single`)
-- `single_gate`: gate id when `bundle=single`
-- `baseline_ref` + `perf_budget_pct`: optional perf parameters
+# Create PR via gh CLI
+gh pr create \
+  --base master \
+  --head issue/03a-attention \
+  --title "[03a] Global/local attention stack" \
+  --body "$(cat <<'EOF'
+## PR Attestation
+... (fill in template)
+EOF
+)"
+```
 
-After approval, ARC scales the B200 runner up, executes the gates, comments results on the PR, and scales back to zero.
+## 5. Tier B Gates (Maintainer-Controlled)
 
-## Merge-down (to master)
+### How it works
 
-We merge **one PR per issue** after:
-1) Review (scope + invariants + public safety)
-2) Tier‑A attestation present
-3) Tier‑B comment is green for the required bundle
+1. Maintainer triggers workflow via GitHub Actions
+2. Workflow uses `environment: b200` (requires approval)
+3. ARC spins up runner pod on B200 node (scale 0→1)
+4. Gates run against `refs/pull/<PR>/merge` (integration test)
+5. Results posted as PR comment
+6. Runner scales back to 0
 
-### Sequencing
+### Triggering gates
 
-Respect `depends_on` from contracts. When in doubt, merge shared-hotspot PRs sequentially (e.g., changes touching `nmoe/train.py`, `nmoe/config.py`, `nmoe/moe.py`, `nmoe/blockscaled/grouped.py`).
+```
+GitHub → Actions → "Tier B gates" → Run workflow
+  - pr_number: <PR number>
+  - bundle: hot_path_min | blockscaled_full | frozen_full | full | single
+  - single_gate: (if bundle=single) e.g., b200:moonlight_8x20
+```
 
-### Conflict policy
+### Gate bundles
 
-- Mechanical conflict resolution first (no refactors while resolving conflicts).
-- If scope needs to expand, update the issue contract first.
+| Bundle | Gates |
+|--------|-------|
+| `hot_path_min` | moonlet_1x10, moonlight_8x20 |
+| `blockscaled_full` | hot_path_min + profile_fp8, profile_nvfp4 |
+| `frozen_full` | moonlight_frozen_8x20, frozen_profile_fp8, frozen_profile_nvfp4 |
+| `zero2_full` | hot_path_min + resume_determinism |
+| `full` | all gates |
 
-## Runner image policy (important)
+## 6. Merge Down
 
-The **runner image** is rebuilt automatically on `master` **only when the Docker environment changes**:
-- `docker/Dockerfile.runner`
-- `docker/Dockerfile.train`
-- `docker/Dockerfile.base`
+### Merge order matters
 
-It intentionally does **not** rebuild on every code change. Tier‑B always:
-1) checks out `refs/pull/<PR>/merge`
-2) builds the CUDA extension from that checkout (`make -C nmoe/csrc`)
-3) runs the selected gates
+Respect `depends_on` in issue contracts:
+```
+01 → 03a → 03b → 08    (core infrastructure chain)
+02, 05, 06, 07, 09     (independent features)
+11, 12, 13             (post-training)
+10                     (final validation - LAST)
+```
 
-This keeps “runner image == environment” while “PR checkout == code under test”.
+### Conflict resolution
 
-## Troubleshooting (public-safe)
+- Check `merge_hotspots` declared in contracts
+- Mechanical resolution first, refactor later
+- Owner for key files:
+  - `train.py` - trainer semantics
+  - `config.py` - public knobs
+  - `csrc/*` - ABI/kernels
 
-- Tier‑B says “missing required env vars”: the runner pod is missing a required env listed in `configs/gates/gates.toml` (`requires`). Fix runner config; do not paste cluster details into issues.
-- Tier‑B says “missing required files”: gate references a config file that doesn’t exist on the merge ref.
-- Perf gate fails: confirm you ran the intended compare gate (typically `b200:moonlight_8x20`) and that the perf budget in the issue contract matches expectations.
+### Merge command
 
+```bash
+git checkout master
+git merge --no-ff issue/03a-attention -m "Merge #03a: Global/local attention stack"
+```
+
+## Gate Reference
+
+Gates are defined in `configs/gates/gates.toml`.
+
+### Tier A (CPU)
+
+| Gate ID | Command |
+|---------|---------|
+| `cpu:import` | `python -c "import nmoe"` |
+| `cpu:compileall` | `python -m compileall -q nmoe/` |
+
+### Tier B (B200)
+
+| Gate ID | GPUs | Config |
+|---------|------|--------|
+| `b200:moonlet_1x10` | 1 | moonlet, 10 steps |
+| `b200:moonlight_8x20` | 8 | moonlight, 20 steps |
+| `b200:moonlight_frozen_8x20` | 8 | moonlight_frozen, 20 steps |
+| `b200:profile_fp8` | 8 | moonlight, fp8, 10 steps |
+| `b200:profile_nvfp4` | 8 | moonlight, nvfp4, 10 steps |
+| `b200:frozen_profile_fp8` | 8 | moonlight_frozen, fp8, 10 steps |
+| `b200:frozen_profile_nvfp4` | 8 | moonlight_frozen, nvfp4, 10 steps |
+| `zero2:resume_determinism` | 8 | save→resume test |
+| `perf:baseline_delta` | - | compare vs baseline |
+
+## Infrastructure
+
+### ARC (Actions Runner Controller)
+
+- **Controller**: `arc-systems` namespace (example; cluster-defined)
+- **Runner scale set**: `arc-runners` namespace, name `b200` (example; cluster-defined)
+- **Scale**: 0→1 (scale-to-zero when idle)
+- **Image**: `ghcr.io/noumena-network/nmoe:runner-latest`
+
+### GitHub Environment
+
+- **Name**: `b200`
+- **Protection**: Required reviewer (maintainer)
+- **Purpose**: Gate Tier B workflow triggers
+
+### Updating runner image
+
+The runner image is built automatically on push to `master` when the runner/training Dockerfiles change.
+It intentionally does **not** rebuild on every code change: Tier‑B gates always run against the PR merge ref
+(`refs/pull/<PR>/merge`) and compile the CUDA extension from that checkout.
+
+Manual build:
+```bash
+docker build -f docker/Dockerfile.runner -t ghcr.io/noumena-network/nmoe:runner-$(git rev-parse --short HEAD) .
+docker push ghcr.io/noumena-network/nmoe:runner-$(git rev-parse --short HEAD)
+```
+
+## Public Safety
+
+All workflow artifacts must be public-safe:
+
+- ✅ Use env vars for paths (NMOE_DATA_PATH, NMOE_RUN_ROOT)
+- ✅ Use gate IDs, not ad-hoc commands
+- ✅ Generic PVC/resource names
+- ❌ No internal hostnames/IPs
+- ❌ No credentials in contracts/attestations
+- ❌ No cluster identifiers
