@@ -45,6 +45,11 @@ jobs:
           ref: refs/pull/${{ inputs.pr_number }}/merge
           fetch-depth: 0
 
+      - name: Build CUDA extension (PR merge ref)
+        run: |
+          set -euo pipefail
+          make -C nmoe/csrc
+
       - name: Run gates
         id: run
         env:

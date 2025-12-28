@@ -1,10 +1,17 @@
 name: Build runner image
 
 on:
+  push:
+    branches: [master]
+    paths:
+      - 'docker/Dockerfile.runner'
+      - 'docker/Dockerfile.train'
+      - 'docker/Dockerfile.base'
+      - '.github/workflows/build-runner.yml'
   workflow_dispatch:
     inputs:
       base_image:
-        description: 'Base image (default: ghcr.io/noumena-network/nmoe:train-latest)'
+        description: 'Base image override (default: ghcr.io/noumena-network/nmoe:train-latest)'
         required: false
         default: 'ghcr.io/noumena-network/nmoe:train-latest'
 
@@ -39,6 +46,15 @@ jobs:
           echo "sha=$SHA" >> $GITHUB_OUTPUT
           echo "date=$(date -u +%Y%m%d)" >> $GITHUB_OUTPUT
 
+      - name: Resolve base image
+        id: base
+        run: |
+          BASE_IMAGE="${{ github.event.inputs.base_image }}"
+          if [ -z "$BASE_IMAGE" ]; then
+            BASE_IMAGE="ghcr.io/noumena-network/nmoe:train-latest"
+          fi
+          echo "base_image=$BASE_IMAGE" >> $GITHUB_OUTPUT
+
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
@@ -49,7 +65,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:runner-${{ steps.meta.outputs.sha }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:runner-latest
           build-args: |
-            BASE_IMAGE=${{ inputs.base_image || 'ghcr.io/noumena-network/nmoe:train-latest' }}
+            BASE_IMAGE=${{ steps.base.outputs.base_image }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -58,5 +74,5 @@ jobs:
           echo "### Runner image built" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Image**: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:runner-${{ steps.meta.outputs.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Base**: \`${{ inputs.base_image || 'ghcr.io/noumena-network/nmoe:train-latest' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Base**: \`${{ steps.base.outputs.base_image }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **SHA**: \`${{ steps.meta.outputs.sha }}\`" >> $GITHUB_STEP_SUMMARY
