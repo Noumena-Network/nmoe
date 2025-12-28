@@ -13,7 +13,6 @@ from typing import Tuple, Type, Union
 from inspect import isclass
 
 import torch
-from nmoe.quant import quantize_fp8, quantize_nvfp4
 
 
 # -- CuTeDSL imports (runtime + typing) --
@@ -29,6 +28,7 @@ try:
     import cutlass.utils.blockscaled_layout as blockscaled_utils
     from cutlass.cutlass_dsl import dsl_user_op
     from cutlass._mlir.dialects import arith, builtin, llvm
+    from cutlass.base_dsl.typing import T
     from cutlass.cute.typing import (
         Float32,
         Float4E2M1FN,
@@ -353,6 +353,162 @@ def _wrap_uint8_as_sf(
 __all__ = ["quantize_weights", "expert_blockscaled"]
 
 
+# -----------------------------------------------------------------------------
+# Fused SwiGLU + quantization helpers (CuTeDSL / PTX)
+# -----------------------------------------------------------------------------
+#
+# The grouped blockscaled kernel includes a fused epilogue that computes:
+#   (gate, up) -> silu(gate) * up -> quantize -> packed activation + E8M0 SFA
+#
+# We use inline PTX for FP8/NVFP4 packing and bitwise E8M0 encode/decode to keep
+# this path allocation-free and avoid materializing BF16 intermediates.
+
+
+@cute.jit
+def _silu_f32(x: cutlass.Float32) -> cutlass.Float32:
+    # Match nmoe/csrc/quant.cu: x / (1 + exp(-x)).
+    one = cutlass.Float32(1.0)
+    return x / (one + cute.math.exp(-x, fastmath=True))
+
+
+@dsl_user_op
+def _e8m0_encode_from_pos_f32(s: Float32, *, loc=None, ip=None) -> Uint8:
+    # Match nmoe/csrc/ptx.cu: ceil(log2(s)) via exponent+mantissa.
+    # Caller guarantees s > 0.
+    u16 = Uint16(
+        llvm.inline_asm(
+            Uint16.mlir_type,
+            [Float32(s).ir_value(loc=loc, ip=ip)],
+            """{\n\t
+            .reg .b32 bits; \n\t
+            .reg .b32 e;    \n\t
+            .reg .b32 mant; \n\t
+            .reg .pred p;   \n\t
+            mov.b32 bits, $1;       \n\t
+            shr.u32 e, bits, 23;    \n\t
+            and.b32 e, e, 0xff;     \n\t
+            and.b32 mant, bits, 0x7fffff; \n\t
+            setp.ne.u32 p, mant, 0; \n\t
+            @p add.u32 e, e, 1;     \n\t
+            min.u32 e, e, 254;      \n\t
+            cvt.u16.u32 $0, e;      \n\t
+            }""",
+            "=h,f",
+            has_side_effects=False,
+            is_align_stack=False,
+            asm_dialect=llvm.AsmDialect.AD_ATT,
+        )
+    )
+    u8 = llvm.trunc(T.i8(), u16.ir_value(loc=loc, ip=ip), llvm.IntegerOverflowFlags.none, loc=loc, ip=ip)
+    return Uint8(u8)
+
+
+@dsl_user_op
+def _e8m0_inv_decode_to_f32(b: Uint8, *, loc=None, ip=None) -> Float32:
+    # Match nmoe/csrc/ptx.cu: inv_scale = 2^(127-b) via exponent-only float bits.
+    return Float32(
+        llvm.inline_asm(
+            Float32.mlir_type,
+            [llvm.zext(T.i16(), Uint8(b).ir_value(loc=loc, ip=ip), loc=loc, ip=ip)],
+            """{\n\t
+            .reg .b32 inv;  \n\t
+            .reg .b32 bits; \n\t
+            .reg .pred p;   \n\t
+            cvt.u32.u16 inv, $1;    \n\t
+            sub.u32 inv, 254, inv;  \n\t
+            shl.b32 bits, inv, 23;  \n\t
+            setp.eq.u32 p, inv, 0;  \n\t
+            @p mov.b32 bits, 0x00400000; \n\t
+            mov.b32 $0, bits;       \n\t
+            }""",
+            "=f,h",
+            has_side_effects=False,
+            is_align_stack=False,
+            asm_dialect=llvm.AsmDialect.AD_ATT,
+        )
+    )
+
+
+@dsl_user_op
+def _fp8_pack2_e4m3(a: Float32, b: Float32, *, loc=None, ip=None) -> Uint16:
+    # Pack two FP8 E4M3 bytes into uint16. Use argument order (b, a) so `a`
+    # becomes the low byte in memory (matches existing packed activation layout).
+    #
+    # PTX returns the packed 16b value in a predicate-friendly register; move it
+    # through a 32b integer output and truncate to avoid constraint mismatches.
+    u32 = llvm.inline_asm(
+        T.i32(),
+        [
+            Float32(b).ir_value(loc=loc, ip=ip),
+            Float32(a).ir_value(loc=loc, ip=ip),
+        ],
+        """{\n\t
+        .reg .b16 t; \n\t
+        cvt.rn.satfinite.e4m3x2.f32 t, $1, $2; \n\t
+        mov.b32 $0, {t, 0}; \n\t
+        }""",
+        "=r,f,f",
+        has_side_effects=True,
+        is_align_stack=False,
+        asm_dialect=llvm.AsmDialect.AD_ATT,
+    )
+    u16 = llvm.trunc(T.i16(), u32, llvm.IntegerOverflowFlags.none, loc=loc, ip=ip)
+    return Uint16(u16)
+
+
+@dsl_user_op
+def _nvfp4_pack2_e2m1(a: Float32, b: Float32, *, loc=None, ip=None) -> Uint8:
+    # Pack two NVFP4 E2M1 nibbles into one byte. Use argument order (b, a) to
+    # match the packed layout consumed by CUTLASS FP4 kernels.
+    u32 = llvm.inline_asm(
+        T.i32(),
+        [
+            Float32(b).ir_value(loc=loc, ip=ip),
+            Float32(a).ir_value(loc=loc, ip=ip),
+        ],
+        """{\n\t
+        .reg .b8 t; \n\t
+        cvt.rn.satfinite.e2m1x2.f32 t, $1, $2; \n\t
+        mov.b32 $0, {t, 0, 0, 0}; \n\t
+        }""",
+        "=r,f,f",
+        has_side_effects=True,
+        is_align_stack=False,
+        asm_dialect=llvm.AsmDialect.AD_ATT,
+    )
+    u8 = llvm.trunc(T.i8(), u32, llvm.IntegerOverflowFlags.none, loc=loc, ip=ip)
+    return Uint8(u8)
+
+
+@dsl_user_op
+def _nvfp4_pack4_e2m1_u16(a0: Float32, a1: Float32, a2: Float32, a3: Float32, *, loc=None, ip=None) -> Uint16:
+    # Match nmoe/csrc/ptx.cu + nmoe/csrc/quant.cu:
+    #  - pack 4 E2M1 nibbles into uint16 (two bytes)
+    #  - swap element pairs to match CUTLASS / TE MMA lane order.
+    u32 = llvm.inline_asm(
+        T.i32(),
+        [
+            Float32(a1).ir_value(loc=loc, ip=ip),
+            Float32(a0).ir_value(loc=loc, ip=ip),
+            Float32(a3).ir_value(loc=loc, ip=ip),
+            Float32(a2).ir_value(loc=loc, ip=ip),
+        ],
+        """{\n\t
+        .reg .b8 f0; \n\t
+        .reg .b8 f1; \n\t
+        cvt.rn.satfinite.e2m1x2.f32 f0, $1, $2; \n\t
+        cvt.rn.satfinite.e2m1x2.f32 f1, $3, $4; \n\t
+        mov.b32 $0, {f0, f1, f0, f1}; \n\t
+        }""",
+        "=r,f,f,f,f",
+        has_side_effects=True,
+        is_align_stack=False,
+        asm_dialect=llvm.AsmDialect.AD_ATT,
+    )
+    u16 = llvm.trunc(T.i16(), u32, llvm.IntegerOverflowFlags.none, loc=loc, ip=ip)
+    return Uint16(u16)
+
+
 # ===============================
 # Vendored kernel implementation
 # ===============================
@@ -608,6 +764,7 @@ class NmoeGroupedScaledGemmKernel:
         a_row_bytes: cutlass.Int32,
         out_act_base_ptr: cutlass.Int64,
         out_sf_base_ptr: cutlass.Int64,
+        out_sf_expert_bytes: cutlass.Int32,
         total_num_clusters: int,
         tensormap_cute_tensor: cute.Tensor,
         max_active_clusters: cutlass.Constexpr[int],
@@ -794,6 +951,7 @@ class NmoeGroupedScaledGemmKernel:
             a_row_bytes,
             out_act_base_ptr,
             out_sf_base_ptr,
+            out_sf_expert_bytes,
             tensormap_cute_tensor,
         ).launch(
             grid=grid,
@@ -842,6 +1000,7 @@ class NmoeGroupedScaledGemmKernel:
         a_row_bytes: cutlass.Int32,
         out_act_base_ptr: cutlass.Int64,
         out_sf_base_ptr: cutlass.Int64,
+        out_sf_expert_bytes: cutlass.Int32,
         tensormaps: cute.Tensor,
     ):
         # Prefetch descriptors on TMA warp
@@ -1285,37 +1444,38 @@ class NmoeGroupedScaledGemmKernel:
 
                 if cutlass.const_expr(self.fuse_swiglu_quant):
                     # Fused SwiGLU + quantization: write quantized post-activation
-                    # (FP8 E4M3FN or NVFP4 E2M1 packed) + row-major E8M0 SF directly
-                    # to global memory (no intermediate BF16 activation tensor).
+                    # (FP8 E4M3FN or NVFP4 E2M1 packed) + per-expert MMA-layout E8M0 SF
+                    # directly to global memory (no intermediate BF16 activation tensor).
                     ptrA_i64 = tensor_address_abc[(cur_group_idx, 0)]
                     group_row0 = (ptrA_i64 - a_base_ptr) // cutlass.Int64(a_row_bytes)
                     n_h13 = grouped_gemm_cta_tile_info.problem_shape_n
                     dff = n_h13 // 2
                     sf_k = dff // cutlass.Int32(32)
                     c1 = cutlass.Int32(1)
+                    c0 = cutlass.Int32(0)
 
-                    # Output scale factors: row-major [M_e, sf_k] uint8.
+                    # Output scale factors: packed-by-offs MMA layout (byte-swizzled, opaque).
                     out_sf_ptr = cute.make_ptr(
                         cutlass.Uint8, out_sf_base_ptr, cute.AddressSpace.gmem, assumed_align=16
                     )
-                    out_sf_ptr = out_sf_ptr + group_row0 * sf_k
-                    gSF = cute.make_tensor(
+                    # Packed layout: expert chunk starts at offs[e] * sf_k (row_bytes).
+                    out_sf_ptr = out_sf_ptr + cutlass.Int64(group_row0) * cutlass.Int64(out_sf_expert_bytes)
+                    # Flat view for explicit CUTLASS swizzle addressing.
+                    sf_flat_len = grouped_gemm_cta_tile_info.problem_shape_m * (dff // cutlass.Int32(32))
+                    gSF_flat = cute.make_tensor(
                         out_sf_ptr,
-                        cute.make_layout(
-                            (grouped_gemm_cta_tile_info.problem_shape_m, sf_k),
-                            stride=(sf_k, c1),
-                        ),
+                        cute.make_layout((sf_flat_len,), stride=(c1,)),
                     )
 
                     # Output activations:
                     # - FP8:  [M_e, dff/2] uint16 (2 FP8 bytes per u16)
-                    # - NVFP4:[M_e, dff/2] uint8 (2 FP4 nibbles per byte)
+                    # - NVFP4:[M_e, dff/4] uint16 (4 FP4 nibbles per u16)
                     if cutlass.const_expr(self.a_dtype == cutlass.Float8E4M3FN):
                         dff_u16 = dff // cutlass.Int32(2)
                         out_act_u16_ptr = cute.make_ptr(
                             cutlass.Uint16, out_act_base_ptr, cute.AddressSpace.gmem, assumed_align=16
                         )
-                        out_act_u16_ptr = out_act_u16_ptr + group_row0 * dff_u16
+                        out_act_u16_ptr = out_act_u16_ptr + cutlass.Int64(group_row0) * cutlass.Int64(dff_u16)
                         gAct_u16 = cute.make_tensor(
                             out_act_u16_ptr,
                             cute.make_layout(
@@ -1324,16 +1484,16 @@ class NmoeGroupedScaledGemmKernel:
                             ),
                         )
                     else:
-                        dff_u8 = dff // cutlass.Int32(2)
-                        out_act_u8_ptr = cute.make_ptr(
-                            cutlass.Uint8, out_act_base_ptr, cute.AddressSpace.gmem, assumed_align=16
+                        dff_u16 = dff // cutlass.Int32(4)
+                        out_act_u16_ptr = cute.make_ptr(
+                            cutlass.Uint16, out_act_base_ptr, cute.AddressSpace.gmem, assumed_align=16
                         )
-                        out_act_u8_ptr = out_act_u8_ptr + group_row0 * dff_u8
-                        gAct_u8 = cute.make_tensor(
-                            out_act_u8_ptr,
+                        out_act_u16_ptr = out_act_u16_ptr + cutlass.Int64(group_row0) * cutlass.Int64(dff_u16)
+                        gAct_u16 = cute.make_tensor(
+                            out_act_u16_ptr,
                             cute.make_layout(
-                                (grouped_gemm_cta_tile_info.problem_shape_m, dff_u8),
-                                stride=(dff_u8, c1),
+                                (grouped_gemm_cta_tile_info.problem_shape_m, dff_u16),
+                                stride=(dff_u16, c1),
                             ),
                         )
                     m_tile0 = mma_tile_coord_mnl[0] * cutlass.Int32(self.cluster_tile_shape_mnk[0])
@@ -1367,14 +1527,16 @@ class NmoeGroupedScaledGemmKernel:
                     # and write quantized outputs directly to gmem.
                     if (out_act_base_ptr != cutlass.Int64(0)) & (out_sf_base_ptr != cutlass.Int64(0)):
                         lane = cute.arch.lane_idx()
-                        half = cutlass.Float32(0.5)
                         lane16 = lane & cutlass.Int32(15)
 
                         # Shuffle within half-warps (two independent 16-lane groups).
-                        width = 16
-                        mask = cute.arch.WARP_SIZE - width
-                        clamp = cute.arch.WARP_SIZE - 1
-                        mask_and_clamp = cutlass.Int32((mask << 8) | clamp)
+                        # CuTeDSL shuffles take a packed `mask_and_clamp`:
+                        #   - mask = (warp_size - width)
+                        #   - clamp = (width - 1)
+                        # packed as (mask << 8) | clamp.
+                        # width=16 partitions the warp into two independent half-warps
+                        # matching our 2-rows-per-warp mapping.
+                        mask_and_clamp = cutlass.Int32((16 << 8) | 15)
 
                         # Process 128 rows: 4 epilogue warps * (2 rows/warp) * 16 iters = 128 rows.
                         iters = self.cluster_tile_shape_mnk[0] // (2 * len(self.epilog_warp_id))
@@ -1386,7 +1548,7 @@ class NmoeGroupedScaledGemmKernel:
                             # Each subtile covers 32 H13 columns = 16 act cols.
                             # We quantize over 32 act cols (2 subtiles) to match sf_vec_size=32.
                             act_col0 = (n_tile0_h13 + cutlass.Int32(subtile0 * 32)) // 2
-                            sf_idx = act_col0 // cutlass.Int32(32)
+                            k_sf = act_col0 // cutlass.Int32(32)
 
                             # --- Load subtile0 into sC[cbuf0] ---
                             tTR_tAcc_mn = tTR_tAcc[(None, None, None, subtile0)]
@@ -1442,13 +1604,8 @@ class NmoeGroupedScaledGemmKernel:
                                             up0   = sC[(row, base + 1, cbuf1)].to(cutlass.Float32)
                                             gate1 = sC[(row, base + 2, cbuf1)].to(cutlass.Float32)
                                             up1   = sC[(row, base + 3, cbuf1)].to(cutlass.Float32)
-
-                                        x0 = half * gate0
-                                        x1 = half * gate1
-                                        silu0 = x0 * _tanh_approx_f32(x0) + x0
-                                        silu1 = x1 * _tanh_approx_f32(x1) + x1
-                                        v0 = silu0 * up0
-                                        v1 = silu1 * up1
+                                        v0 = _silu_f32(gate0) * up0
+                                        v1 = _silu_f32(gate1) * up1
                                     else:
                                         # NVFP4: 8 lanes cover 32 outputs (4 outputs per lane),
                                         # avoiding cross-lane shuffles in the quant hot path.
@@ -1473,18 +1630,10 @@ class NmoeGroupedScaledGemmKernel:
                                             gate3 = sC[(row, base + 6, cbuf1)].to(cutlass.Float32)
                                             up3   = sC[(row, base + 7, cbuf1)].to(cutlass.Float32)
 
-                                        x0 = half * gate0
-                                        x1 = half * gate1
-                                        x2 = half * gate2
-                                        x3 = half * gate3
-                                        silu0 = x0 * _tanh_approx_f32(x0) + x0
-                                        silu1 = x1 * _tanh_approx_f32(x1) + x1
-                                        silu2 = x2 * _tanh_approx_f32(x2) + x2
-                                        silu3 = x3 * _tanh_approx_f32(x3) + x3
-                                        v0 = silu0 * up0
-                                        v1 = silu1 * up1
-                                        v2 = silu2 * up2
-                                        v3 = silu3 * up3
+                                        v0 = _silu_f32(gate0) * up0
+                                        v1 = _silu_f32(gate1) * up1
+                                        v2 = _silu_f32(gate2) * up2
+                                        v3 = _silu_f32(gate3) * up3
 
                                 # Per-row amax over this 32-wide block.
                                 abs0 = cute.arch.fmax(v0, -v0)
@@ -1493,10 +1642,8 @@ class NmoeGroupedScaledGemmKernel:
                                 abs3 = cute.arch.fmax(v3, -v3)
                                 amax = cute.arch.fmax(cute.arch.fmax(abs0, abs1), cute.arch.fmax(abs2, abs3))
                                 for off in (8, 4, 2, 1):
-                                    src = lane16 + cutlass.Int32(off)
-                                    other = cute.arch.shuffle_sync(amax, offset=src, mask_and_clamp=mask_and_clamp)
-                                    if lane16 < cutlass.Int32(off):
-                                        amax = cute.arch.fmax(amax, other)
+                                    other = cute.arch.shuffle_sync_down(amax, offset=cutlass.Int32(off), mask_and_clamp=mask_and_clamp)
+                                    amax = cute.arch.fmax(amax, other)
 
                                 # Lane16==0 in each half-warp computes scale.
                                 scale_byte = cutlass.Uint8(127)
@@ -1512,7 +1659,20 @@ class NmoeGroupedScaledGemmKernel:
                                 inv_scale = cute.arch.shuffle_sync(inv_scale, offset=0, mask_and_clamp=mask_and_clamp)
 
                                 if (lane16 == cutlass.Int32(0)) & (row_in_group < grouped_gemm_cta_tile_info.problem_shape_m):
-                                    gSF[(row_in_group, sf_idx)] = scale_byte
+                                    # Match nmoe/csrc/quant.cu: cutlass_sf_swizzle_offset(m, k_sf, M_e, sf_k).
+                                    # This swizzle is the source of truth for the per-expert MMA SF layout.
+                                    m = row_in_group
+                                    k = k_sf
+                                    m_32 = m % cutlass.Int32(32)
+                                    m_4 = (m // cutlass.Int32(32)) % cutlass.Int32(4)
+                                    m_rest = m // cutlass.Int32(128)
+                                    k_4 = k % cutlass.Int32(4)
+                                    k_rest = k // cutlass.Int32(4)
+                                    rest_k = (dff // cutlass.Int32(32)) // cutlass.Int32(4)  # sf_k/4
+                                    atom_offset = m_32 * cutlass.Int32(16) + m_4 * cutlass.Int32(4) + k_4
+                                    atom_idx = m_rest * rest_k + k_rest
+                                    dst = atom_idx * cutlass.Int32(512) + atom_offset
+                                    gSF_flat[dst] = scale_byte
 
                                 q0 = v0 * inv_scale
                                 q1 = v1 * inv_scale
@@ -1522,14 +1682,11 @@ class NmoeGroupedScaledGemmKernel:
                                         if u16_idx < (dff // cutlass.Int32(2)):
                                             gAct_u16[(row_in_group, u16_idx)] = _fp8_pack2_e4m3(q0, q1)
                                     else:
-                                        if j < cutlass.Int32(8):
-                                            col = (act_col0 // cutlass.Int32(2)) + j * cutlass.Int32(2)
-                                            if col < (dff // cutlass.Int32(2)):
-                                                q2 = v2 * inv_scale
-                                                q3 = v3 * inv_scale
-                                                gAct_u8[(row_in_group, col + cutlass.Int32(0))] = _nvfp4_pack2_e2m1(q0, q1)
-                                                if (col + cutlass.Int32(1)) < (dff // cutlass.Int32(2)):
-                                                    gAct_u8[(row_in_group, col + cutlass.Int32(1))] = _nvfp4_pack2_e2m1(q2, q3)
+                                        u16_idx = (act_col0 // cutlass.Int32(4)) + j
+                                        if (j < cutlass.Int32(8)) & (u16_idx < (dff // cutlass.Int32(4))):
+                                            q2 = v2 * inv_scale
+                                            q3 = v3 * inv_scale
+                                            gAct_u16[(row_in_group, u16_idx)] = _nvfp4_pack4_e2m1_u16(q0, q1, q2, q3)
 
                     # Ensure all stores are visible before proceeding.
                     self.epilog_sync_barrier.arrive_and_wait()
@@ -1955,10 +2112,15 @@ _STRIDED_COMPILE_CACHE: dict[_StridedCompileKey, Tuple] = {}
 
 @dataclass
 class _ExpertScratch:
-    M_cap: int               # capacity in rows for activation scratch
-    A_u16: torch.Tensor      # packed post-SwiGLU activations (uint16)
-    A_sf_mkl: torch.Tensor   # [M_cap, sf_k] row-major E8M0 (epilogue output)
-    A_sf_mma: torch.Tensor   # [M_cap, sf_k] MMA-swizzled E8M0 (packed by padded row)
+    """Blockscaled expert scratch (capacity-bounded, reuse-only)."""
+
+    M_cap: int
+    # Fused W13 epilogue outputs
+    # fp8:   uint16 [M_cap, Dff//2] (2 FP8 bytes per u16)
+    # nvfp4: uint8  [M_cap, Dff//2] (2 FP4 codes per byte)
+    A_act: torch.Tensor
+    # Post-activation SFA (packed by offs): uint8 [M_cap, sf_k_out] MMA layout
+    A_sf: torch.Tensor
 
 
 _EXPERT_SCRATCH: dict[tuple[int, str, int, int, int], _ExpertScratch] = {}
@@ -1966,7 +2128,7 @@ _EXPERT_SCRATCH: dict[tuple[int, str, int, int, int], _ExpertScratch] = {}
 
 def run_grouped_blockscaled_strided(
     A_pad: torch.Tensor,           # [M_pad, K_packed, 1] quantized activations
-    SFA_pad: torch.Tensor,         # [M_pad, sf_k_pad] uint8 E8M0 scale factors (MMA swizzled, packed by padded row)
+    SFA_pad: torch.Tensor,         # [M_pad, sf_k_pad] uint8 E8M0 scale factors (packed by offs, MMA swizzled)
     B_stacked: torch.Tensor,       # [E, N, K_packed, 1] stacked weights
     SFB_stacked: torch.Tensor,     # [E, N, sf_k, 1] uint8 E8M0 scale factors (MMA swizzled)
     C_pad: torch.Tensor,           # [M_pad, N, 1] output (pre-allocated)
@@ -1977,7 +2139,7 @@ def run_grouped_blockscaled_strided(
     K: int,                        # Input dimension (in elements, not packed)
     fuse_swiglu_quant: bool = False,
     out_act: torch.Tensor | None = None,     # fp8: [M_pad, Dff//2] uint16; nvfp4: [M_pad, Dff//2] uint8
-    out_sf_mkl: torch.Tensor | None = None,  # [M_pad, sf_k] uint8 row-major
+    out_sf_mma: torch.Tensor | None = None,  # [M_pad, sf_k] uint8 MMA layout (packed by offs)
 ) -> None:
     """Strided grouped blockscaled GEMM (GPU metadata builder).
 
@@ -1994,7 +2156,7 @@ def run_grouped_blockscaled_strided(
     When fuse_swiglu_quant=True, the kernel uses the vendored fused epilogue
     path to compute SwiGLU + quantize/pack + E8M0 SF in one pass, writing:
       - out_act: quantized post-activation (FP8 or NVFP4 packed)
-      - out_sf_mkl: row-major E8M0 scale factors per 32 outputs
+      - out_sf_mma: per-expert MMA-layout E8M0 scale factors per 32 outputs
     This mode is only valid for the W13 GEMM (interleaved gate/up columns).
     """
     E = B_stacked.shape[0]
@@ -2035,11 +2197,69 @@ def run_grouped_blockscaled_strided(
     ct_m = mma_tiler_mn[0] * cluster_shape_mn[0]
     ct_n = mma_tiler_mn[1] * cluster_shape_mn[1]
 
-    # Activation SFA is packed by padded row: [M_pad, sf_k_pad] uint8, already swizzled to MMA layout.
-    # Each expert's base pointer is derived from offs[e] (128-aligned), so no per-expert stride tensor is needed.
-    if not (SFA_pad.is_cuda and SFA_pad.dtype == torch.uint8 and SFA_pad.ndim == 2 and int(SFA_pad.shape[0]) == int(M_pad)):
-        raise ValueError("SFA_pad must be uint8 CUDA tensor with shape [M_pad, sf_k_pad] (MMA layout).")
-    sf_k_pad = int(SFA_pad.shape[1])
+    # Packed SFA layout (production): [M_pad, sf_k_pad] MMA-swizzled bytes, where
+    # each expert's swizzled chunk is packed back-to-back using offs (no E*capacity allocation).
+    if not (SFA_pad.is_cuda and SFA_pad.dtype == torch.uint8 and SFA_pad.ndim in (2, 3)):
+        raise ValueError(
+            "SFA_pad must be a uint8 CUDA tensor (packed by offs, MMA layout). "
+            f"Got device={SFA_pad.device} dtype={SFA_pad.dtype} shape={tuple(SFA_pad.shape)}."
+        )
+    if SFA_pad.ndim == 3:
+        if int(SFA_pad.shape[2]) != 1:
+            raise ValueError(f"SFA_pad must have trailing singleton dim if 3D. Got shape={tuple(SFA_pad.shape)}.")
+        if int(SFA_pad.shape[0]) != int(M_pad):
+            raise ValueError(f"SFA_pad.shape[0] must equal M_pad={M_pad}. Got {int(SFA_pad.shape[0])}.")
+        # Drop last dim for simpler checks/strides (no copy).
+        SFA_pad = SFA_pad.squeeze(-1)
+    else:
+        if int(SFA_pad.shape[0]) != int(M_pad):
+            raise ValueError(f"SFA_pad.shape[0] must equal M_pad={M_pad}. Got {int(SFA_pad.shape[0])}.")
+    SFA_row_bytes = int(SFA_pad.stride(0))  # uint8 => element stride is byte stride
+
+    out_act_base_ptr = 0
+    out_sf_base_ptr = 0
+    out_sf_expert_bytes = 0
+    if fuse_swiglu_quant:
+        if (N & 1) != 0:
+            raise ValueError(f"fuse_swiglu_quant requires N=2*Dff. Got N={N}.")
+        dff = N // 2
+        sf_k_out = (dff + 31) // 32
+        if (sf_k_out & 3) != 0:
+            raise ValueError(f"fuse_swiglu_quant requires Dff multiple of 128. Got Dff={dff}.")
+
+        if out_act is None:
+            raise ValueError("fuse_swiglu_quant=True requires out_act.")
+        if out_sf_mma is None:
+            raise ValueError("fuse_swiglu_quant=True requires out_sf_mma.")
+
+        if profile == "fp8":
+            exp_dtype = torch.uint16
+        else:
+            exp_dtype = torch.uint8
+        exp_shape1 = dff // 2
+        if not (
+            out_act.is_cuda
+            and out_act.dtype == exp_dtype
+            and out_act.ndim == 2
+            and int(out_act.shape[0]) == int(M_pad)
+            and int(out_act.shape[1]) == int(exp_shape1)
+            and out_act.is_contiguous()
+        ):
+            raise ValueError(f"out_act must be contiguous CUDA {exp_dtype} tensor with shape [M_pad, {exp_shape1}].")
+
+        if not (
+            out_sf_mma.is_cuda
+            and out_sf_mma.dtype == torch.uint8
+            and out_sf_mma.ndim == 2
+            and int(out_sf_mma.shape[0]) == int(M_pad)
+            and int(out_sf_mma.shape[1]) == int(sf_k_out)
+            and out_sf_mma.is_contiguous()
+        ):
+            raise ValueError("out_sf_mma must be contiguous uint8 CUDA tensor with shape [M_pad, sf_k_out].")
+
+        out_act_base_ptr = int(out_act.data_ptr())
+        out_sf_base_ptr = int(out_sf_mma.data_ptr())
+        out_sf_expert_bytes = int(out_sf_mma.stride(0))  # uint8 => row byte stride (packed by offs)
 
     # Tile-scheduler upper bound (for tensormap workspace sizing).
     #
@@ -2055,10 +2275,10 @@ def run_grouped_blockscaled_strided(
     #
     # This is much tighter than E*ceil(M_e_stride/ct_m) and avoids pathological
     # JIT compile times for small runs on large-capacity buffers.
-    # With packed SFA and 128-aligned offs, the only stable upper bound we have here is M_pad itself.
-    tiles_m_cap = max(1, (M_pad + (ct_m - 1)) // ct_m)
     tiles_n = (N + ct_n - 1) // ct_n
-    max_clusters_cap = max(1, int(tiles_m_cap) * int(tiles_n))
+    # Tensormap workspace is indexed by CTA coordinates (gridDim.x*y*z), not by total tiles.
+    # Keep this bounded by active CTAs to avoid multi-minute JITs / allocator spikes.
+    max_clusters_cap = max(1, int(_num_sms()))
 
     # Exact number of work tiles for the persistent scheduler.
     # With RDEP-style padding, M_pad is 128-aligned and concatenates all experts
@@ -2163,7 +2383,7 @@ def run_grouped_blockscaled_strided(
             kernel, init_a, init_b, init_c, init_sfa, init_sfb,
             E, tensor_of_dim_size_mnkl, tensor_of_strides_abc,
             tensor_of_ptrs_abc, tensor_of_ptrs_sfasfb,
-            cutlass.Int64(0), cutlass.Int32(0), cutlass.Int64(0), cutlass.Int64(0),
+            cutlass.Int64(0), cutlass.Int32(0), cutlass.Int64(0), cutlass.Int64(0), cutlass.Int32(0),
             max_clusters_cap,
             tensor_of_tensormap, params.max_active_clusters, cu_stream,
             options="--opt-level 2",
@@ -2219,7 +2439,6 @@ def run_grouped_blockscaled_strided(
     B_expert_bytes = B_stacked.stride(0)  # uint8 backed, stride is bytes
     # C is ignored when fuse_swiglu_quant=True; use 0 strides to keep pointer arithmetic in-bounds.
     C_row_bytes = 0 if fuse_swiglu_quant else (C_pad.stride(0) * 2)
-    SFA_row_bytes = SFA_pad.stride(0)  # Row stride in bytes (packed SFA)
     SFB_expert_bytes = SFB_stacked.stride(0)  # uint8 backed
 
     # Call our CUDA kernel to build metadata on GPU
@@ -2236,7 +2455,7 @@ def run_grouped_blockscaled_strided(
         A_pad.data_ptr(), A_row_bytes,
         B_stacked.data_ptr(), B_expert_bytes,
         C_pad.data_ptr(), C_row_bytes,
-        SFA_pad.data_ptr(), SFA_row_bytes,  # SFA uses padded-row indexing via offs
+        SFA_pad.data_ptr(), SFA_row_bytes,  # packed SFA: base + offs[e]*row_bytes
         SFB_stacked.data_ptr(), SFB_expert_bytes,
         # Element strides for CUTLASS
         A_stride0_elem, A_stride1_elem,
@@ -2263,10 +2482,11 @@ def run_grouped_blockscaled_strided(
         E, dim_size_mnkl_cute, strides_abc_cute,
         ptrs_abc_cute, ptrs_sfasfb_cute,
         cutlass.Int64(A_pad.data_ptr()), cutlass.Int32(A_row_bytes),
-        cutlass.Int64(out_act_ptr),
-        cutlass.Int64(out_sf_ptr),
+        cutlass.Int64(out_act_base_ptr),
+        cutlass.Int64(out_sf_base_ptr),
+        cutlass.Int32(out_sf_expert_bytes),
         cutlass.Int32(total_num_clusters),
-        tensormap_cute, max_active_clusters, cu_stream,
+        tensormap_cute, cu_stream,
     )
 
 
@@ -2436,17 +2656,19 @@ def expert_blockscaled(
     Xe_sf_pad: torch.Tensor,
     W_cache: QuantizedWeightsFused,
     offs_pad: torch.Tensor,
+    *,
+    capacity_rows: int | None = None,
 ) -> torch.Tensor:
     """Expert MLP (blockscaled) for RDEP-produced packed activations + swizzled SFA.
 
     Contract (production):
       - Xe_q_pad: [M_pad, Hp] uint16 packed activations from RDEP dispatch
-      - Xe_sf_pad: [M_pad, sf_k_pad] uint8 E8M0 SFA in MMA layout (packed by padded row)
+      - Xe_sf_pad: [M_pad, sf_k_pad] uint8 E8M0 SFA in MMA layout (packed by offs)
       - offs_pad: [E] int32 cumulative padded offsets (no leading 0)
 
     Implementation:
       - GEMM1+2 (W13): produces BF16 H13 = [gate, up] interleaved
-      - Fused SwiGLU + quantize/pack: produces packed activations + SFA directly in per-expert MMA layout
+      - Fused SwiGLU + quantize/pack: produces packed activations + packed-by-offs MMA SFA
       - GEMM3 (W2): consumes packed activations + MMA SFA and produces BF16 output
     """
     M_pad = int(Xe_q_pad.shape[0])
@@ -2458,23 +2680,75 @@ def expert_blockscaled(
     if M_pad == 0:
         return torch.zeros(0, H, device=Xe_q_pad.device, dtype=torch.bfloat16)
 
+    # Production (moonlight): Xe_sf_pad is packed by offs as a 2D swizzled buffer
+    # [M_pad, sf_k_pad], where each expert chunk is laid out back-to-back.
+    if not (Xe_sf_pad.is_cuda and Xe_sf_pad.dtype == torch.uint8 and Xe_sf_pad.ndim in (2, 3)):
+        raise ValueError(
+            "Xe_sf_pad must be a uint8 CUDA tensor with shape [M_pad, sf_k_pad] (packed by offs, MMA layout). "
+            f"Got device={Xe_sf_pad.device} dtype={Xe_sf_pad.dtype} shape={tuple(Xe_sf_pad.shape)}."
+        )
+    if Xe_sf_pad.ndim == 3:
+        if int(Xe_sf_pad.shape[2]) != 1:
+            raise ValueError(f"Xe_sf_pad must have trailing singleton dim if 3D. Got shape={tuple(Xe_sf_pad.shape)}.")
+        Xe_sf_pad = Xe_sf_pad.squeeze(-1)
+    if int(Xe_sf_pad.shape[0]) != int(M_pad):
+        raise ValueError(f"Xe_sf_pad.shape[0] must equal M_pad={M_pad}. Got {int(Xe_sf_pad.shape[0])}.")
+
     device_index = Xe_q_pad.device.index if Xe_q_pad.device.index is not None else torch.cuda.current_device()
+    # Input SFA is for K=H.
+    sf_k_in = H // 32
+    sf_k_in_pad = ((sf_k_in + 3) // 4) * 4
+    if int(Xe_sf_pad.shape[1]) != int(sf_k_in_pad):
+        raise ValueError(f"Xe_sf_pad.shape[1] must equal sf_k_in_pad={sf_k_in_pad}. Got {int(Xe_sf_pad.shape[1])}.")
+
+    # Post-activation SFA is for K=Dff.
+    sf_k_out = Dff // 32
+    if (sf_k_out & 3) != 0:
+        raise ValueError(f"Dff must be a multiple of 128 (sf_k_out%4==0). Got Dff={Dff}.")
+
+    # Scratch is cached per (device, profile, E, H, Dff) and must not accumulate
+    # multiple large buffers across routing/layers (HBM stability contract).
+    #
+    # When capacity_rows is provided, size scratch by the configured no-drop
+    # capacity (routing-independent) to avoid per-step allocator growth when
+    # M_pad fluctuates.
+    align_m = 128
+    M_cap_rows = int(M_pad)
+    if capacity_rows is not None:
+        cap = int(capacity_rows)
+        if cap < 0:
+            raise ValueError(f"capacity_rows must be >=0, got {cap}.")
+        # RDEP pads each expert to 128 rows; total padded M is bounded by
+        # capacity + E*(align_m-1). Add one extra (align_m-1) for final rounding.
+        M_cap_rows = ((cap + E * (align_m - 1) + (align_m - 1)) // align_m) * align_m
+
+    M_cap_needed = ((int(M_cap_rows) + (align_m - 1)) // align_m) * align_m
     scratch_key = (int(device_index), str(profile), int(E), int(H), int(Dff))
     scratch = _EXPERT_SCRATCH.get(scratch_key)
-    if scratch is None or int(scratch.M_cap) < int(M_pad):
-        M_cap = ((int(M_pad) + 127) // 128) * 128
+    if scratch is None or int(scratch.M_cap) < int(M_cap_needed):
+        # Reuse-only when capacity_rows is set (allocator stability contract).
+        if scratch is not None and capacity_rows is not None:
+            raise RuntimeError(
+                f"blockscaled expert scratch too small for configured capacity: "
+                f"have M_cap={int(scratch.M_cap)} need>={int(M_cap_needed)} "
+                f"(capacity_rows={int(capacity_rows)}, E={E}, align_m={align_m})."
+            )
+
+        # Otherwise, grow once to the needed upper bound (and replace in-cache),
+        # making sure we drop the old buffer first to avoid transient double
+        # allocation spikes.
+        if scratch is not None:
+            del _EXPERT_SCRATCH[scratch_key]
+            scratch = None
+
         if profile == "fp8":
-            A_u16 = torch.empty((M_cap, Dff // 2), device=Xe_q_pad.device, dtype=torch.uint16)
+            A_act = torch.empty((M_cap_needed, Dff // 2), device=Xe_q_pad.device, dtype=torch.uint16)
         elif profile == "nvfp4":
-            A_u16 = torch.empty((M_cap, Dff // 4), device=Xe_q_pad.device, dtype=torch.uint16)
+            A_act = torch.empty((M_cap_needed, Dff // 2), device=Xe_q_pad.device, dtype=torch.uint8)
         else:
             raise ValueError(f"Unsupported profile: {profile}")
-        sf_k = (Dff + 31) // 32
-        if (sf_k & 3) != 0:
-            raise ValueError(f"Dff must be a multiple of 128 (sf_k%4==0). Got Dff={Dff}.")
-        A_sf_mkl = torch.empty((M_cap, sf_k), device=Xe_q_pad.device, dtype=torch.uint8)
-        A_sf_mma = torch.empty((M_cap, sf_k), device=Xe_q_pad.device, dtype=torch.uint8)
-        scratch = _ExpertScratch(M_cap=M_cap, A_u16=A_u16, A_sf_mma=A_sf_mma, A_sf_mkl=A_sf_mkl)
+        A_sf = torch.empty((M_cap_needed, sf_k_out), device=Xe_q_pad.device, dtype=torch.uint8)
+        scratch = _ExpertScratch(M_cap=M_cap_needed, A_act=A_act, A_sf=A_sf)
         _EXPERT_SCRATCH[scratch_key] = scratch
 
     # offs: [E+1] with leading 0.
@@ -2493,44 +2767,27 @@ def expert_blockscaled(
     else:
         raise ValueError(f"Unsupported profile: {profile}")
 
-    # GEMM 1+2 (fused W13): fused epilogue computes SwiGLU + quantize, no BF16 [M,2*Dff] materialization.
+    # GEMM 1+2 (W13) with fused SwiGLU + quantization (no BF16 H13 materialization).
     dummy_c = torch.empty((1, 1, 1), device=Xe_q_pad.device, dtype=torch.bfloat16)
     run_grouped_blockscaled_strided(
-        A_q,
-        Xe_sf_pad,
-        W_cache.W13_q,
-        W_cache.W13_sf_mma,
-        dummy_c,
-        offs,
-        profile=profile,
-        N=2 * Dff,
-        K=H,
+        A_q, Xe_sf_pad, W_cache.W13_q, W_cache.W13_sf_mma, dummy_c, offs,
+        profile=profile, N=2 * Dff, K=H,
         fuse_swiglu_quant=True,
-        out_act=scratch.A_u16,
-        out_sf_mkl=scratch.A_sf_mkl,
-    )
-
-    stream = torch.cuda.current_stream(Xe_q_pad.device)
-    sf_k = int(scratch.A_sf_mkl.shape[1])
-    rdep.swizzle_sf_mkl_to_mma(
-        scratch.A_sf_mkl.data_ptr(),
-        scratch.A_sf_mma.data_ptr(),
-        M_pad,
-        sf_k,
-        stream,
+        out_act=scratch.A_act[:M_pad],
+        out_sf_mma=scratch.A_sf[:M_pad],
     )
 
     if profile == "fp8":
-        A_q_3 = scratch.A_u16[:M_pad].view(torch.uint8).view(M_pad, Dff, 1).view(torch.float8_e4m3fn)
+        A_q_3 = scratch.A_act[:M_pad].view(torch.uint8).view(M_pad, Dff, 1).view(torch.float8_e4m3fn)
     elif profile == "nvfp4":
-        A_q_3 = scratch.A_u16[:M_pad].view(torch.uint8).view(M_pad, Dff // 2, 1)
+        A_q_3 = scratch.A_act[:M_pad].view(torch.uint8).view(M_pad, Dff // 2, 1)
     else:
         raise ValueError(f"Unsupported profile: {profile}")
 
     # GEMM 3: Y = A @ W2.T
     Y_pad = torch.empty((M_pad, H, 1), device=Xe_q_pad.device, dtype=torch.bfloat16)
     run_grouped_blockscaled_strided(
-        A_q_3, scratch.A_sf_mma[:M_pad], W_cache.W2_q, W_cache.W2_sf_mma, Y_pad, offs,
+        A_q_3, scratch.A_sf[:M_pad], W_cache.W2_q, W_cache.W2_sf_mma, Y_pad, offs,
         profile=profile, N=H, K=Dff,
     )
 

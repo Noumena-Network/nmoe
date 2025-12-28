@@ -356,7 +356,7 @@ class _MoEBlockscaledFused(torch.autograd.Function):
 
     # Expert compute (blockscaled)
     from nmoe.blockscaled.grouped import expert_blockscaled
-    Ye_pad = expert_blockscaled(Xe_q, Xe_sf, W_cache, offs_pad)
+    Ye_pad = expert_blockscaled(Xe_q, Xe_sf, W_cache, offs_pad, capacity_rows=int(rdep.capacity))
 
     _C.return_scatter_from_pad_blockscaled(
       Ye_pad.data_ptr(),
@@ -471,6 +471,42 @@ class _MoEBlockscaledFused(torch.autograd.Function):
     # This eliminates the expensive Ye_pad recomputation for dGate.
     # A = post-SwiGLU activation, dA' = dYe @ W2.T (ungated gradient)
 
+    Xe_q = torch.empty(int(max_pad), Hp, device=device, dtype=torch.uint16)
+    Xe_sf = torch.empty(E, M_e_stride, sf_k_pad, device=device, dtype=torch.uint8)
+
+    # Quant kernels expect offs_with0 [E+1] with leading 0: [0, offs_pad[0], offs_pad[1], ...]
+    offs_with0 = torch.cat([torch.zeros(1, device=device, dtype=torch.int32), offs_pad])
+
+    if rdep.profile == 'fp8':
+      _C.quant_fp8_sf_strided_mma(
+        Xe_pad.data_ptr(), int(H),
+        Xe_q.data_ptr(), Hp,
+        Xe_sf.data_ptr(),
+        offs_with0.data_ptr(),
+        E, M_e_stride,
+        int(max_pad), int(H),
+        stream,
+      )
+    else:  # nvfp4
+      _C.quant_nvfp4_sf_strided_mma(
+        Xe_pad.data_ptr(), int(H),
+        Xe_q.data_ptr(), Hp,
+        Xe_sf.data_ptr(),
+        offs_with0.data_ptr(),
+        E, M_e_stride,
+        int(max_pad), int(H),
+        stream,
+      )
+
+    from nmoe.blockscaled.grouped import expert_blockscaled
+    Ye_pad = expert_blockscaled(Xe_q, Xe_sf, W_cache, offs_pad, capacity_rows=int(rdep.capacity))
+
+    # Gather sorted Ye for dGate
+    Ye_sorted_unscaled = torch.empty(int(M_recv), int(H), device=device, dtype=torch.bfloat16)
+    _C.gather_from_pad_bf16(Ye_pad.data_ptr(), Ye_sorted_unscaled.data_ptr(), int(M_recv), int(H), stream)
+
+    # TODO(perf): The gather_dy kernels still compute dGate internally (dot product of Ye*dOut).
+    # This is wasted compute (~negligible). To fully remove, modify CUDA kernels in rdep.cu.
     dYe_sorted = torch.empty(int(M_recv), int(H), device=device, dtype=torch.bfloat16)
     dGate_sorted = torch.empty(int(M_recv), device=device, dtype=torch.float32)
     dGates_tk_f32 = torch.zeros(int(T), int(K), device=device, dtype=torch.float32)
