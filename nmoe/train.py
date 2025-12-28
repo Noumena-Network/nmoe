@@ -128,6 +128,31 @@ def train(cfg: Config):
           loader_wait_ms=loader_wait_ms,
         )
 
+        # Choice-based eval (fast forward-only scoring). All ranks participate.
+        eval_every = int(getattr(cfg, "eval_every", 0) or 0)
+        if eval_every > 0 and (s % eval_every) == 0:
+          try:
+            from nmoe.eval.choices import run_eval, format_results
+            eval_results = run_eval(
+              model,
+              cfg,
+              rank=rank,
+              world=world,
+              max_examples=int(getattr(cfg, "eval_budget_max_examples", 500)),
+            )
+            if rank == 0:
+              print(f"[eval] step={s} {format_results(eval_results)}")
+              if getattr(metrics_ctx, "writer", None) is not None:
+                items = []
+                for tname, r in eval_results.items():
+                  items.append((f"eval_choices/{tname}/acc", float(r.get("acc", 0.0))))
+                  items.append((f"eval_choices/{tname}/centered_acc", float(r.get("centered_acc", 0.0))))
+                  items.append((f"eval_choices/{tname}/n", float(r.get("n", 0.0))))
+                metrics_ctx.writer.insert_many(step=s, items=items)
+          except Exception as e:
+            if rank == 0:
+              print(f"[eval] failed: {e}")
+
         # Opportunistically schedule evaluation (async or inline), if enabled
         try:
           maybe_schedule_eval(s, cfg, model, run_id, print)

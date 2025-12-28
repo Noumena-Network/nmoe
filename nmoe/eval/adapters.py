@@ -20,8 +20,6 @@ Adapters are intentionally compact and robust to minor schema variations.
 
 from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 
-from datasets import load_dataset
-
 
 def _parse_source(src: str) -> Tuple[str, List[str]]:
     parts = src.split(":")
@@ -35,6 +33,9 @@ def _parse_source(src: str) -> Tuple[str, List[str]]:
 # ----------------------
 
 def iter_choices(name: str, source: str, max_examples: int) -> Iterator[Dict]:
+    # Lazy import so `python -c "import nmoe.eval.*"` works in minimal environments.
+    from datasets import load_dataset
+
     scheme, args = _parse_source(source)
     assert scheme == "hf", f"Unsupported scheme for choices: {scheme}"
 
@@ -77,11 +78,36 @@ def iter_choices(name: str, source: str, max_examples: int) -> Iterator[Dict]:
                 q = ex.get("question") or ex.get("input")
                 opts = ex.get("choices") or ex.get("options")
                 ans = ex.get("answer")
+                # cais/mmlu uses integer index (0-3), hendrycks uses letter A-D
                 if isinstance(ans, str) and ans in "ABCD":
                     idx = "ABCD".index(ans)
+                elif isinstance(ans, int):
+                    idx = ans
                 else:
-                    idx = int(ans) if ans is not None else None
-                if idx is None or not isinstance(opts, list):
+                    try:
+                        idx = int(ans)
+                    except (TypeError, ValueError):
+                        continue
+                if idx is None or not isinstance(opts, list) or idx >= len(opts):
+                    continue
+                prompt = f"{q}\nChoices:\n" + "\n".join([f"{chr(65+i)}. {o}" for i, o in enumerate(opts)]) + "\nAnswer:"
+                yield {"prompt": prompt, "options": opts, "label": idx}
+
+            elif dataset_base == "MMLU-Pro":  # TIGER-Lab/MMLU-Pro (10 choices A-J)
+                q = ex.get("question")
+                opts = ex.get("options")
+                # Use answer_index directly if available, else parse letter
+                ans_idx = ex.get("answer_index")
+                ans = ex.get("answer")
+                if not q or not opts:
+                    continue
+                if ans_idx is not None:
+                    idx = int(ans_idx)
+                elif isinstance(ans, str) and ans in "ABCDEFGHIJ":
+                    idx = "ABCDEFGHIJ".index(ans)
+                else:
+                    continue
+                if idx >= len(opts):
                     continue
                 prompt = f"{q}\nChoices:\n" + "\n".join([f"{chr(65+i)}. {o}" for i, o in enumerate(opts)]) + "\nAnswer:"
                 yield {"prompt": prompt, "options": opts, "label": idx}
@@ -159,6 +185,9 @@ def iter_choices(name: str, source: str, max_examples: int) -> Iterator[Dict]:
 # -------------------
 
 def iter_span(name: str, source: str, max_examples: int) -> Iterator[Dict]:
+    # Lazy import so `python -c "import nmoe.eval.*"` works in minimal environments.
+    from datasets import load_dataset
+
     scheme, args = _parse_source(source)
     assert scheme == "hf", f"Unsupported scheme for span: {scheme}"
     if len(args) == 3:
