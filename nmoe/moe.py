@@ -91,9 +91,9 @@ class _MoEBf16Fused(torch.autograd.Function):
       # DeepEP collectiveness: every rank must participate in return_scatter even if it sends nothing,
       # because other ranks may be returning outputs for *our* local tokens, and IPC barriers must match.
       if is_dist:
-        dummy_ye = torch.empty(1, int(H), device=device, dtype=torch.bfloat16)
-        _C.return_scatter(
-          dummy_ye.data_ptr(),
+        dummy_ye_pad = torch.empty(1, int(H), device=device, dtype=torch.bfloat16)
+        _C.return_scatter_from_pad_bf16(
+          dummy_ye_pad.data_ptr(),
           out_f32.data_ptr(),
           0, int(T), int(K),
           stream,
@@ -115,11 +115,8 @@ class _MoEBf16Fused(torch.autograd.Function):
     _C.gather_xe_bf16(Xe_pad.data_ptr(), int(M_recv), int(max_pad), stream)
 
     Ye_pad = expert(Xe_pad, W1, W3, W2, offs_pad)
-    Ye_sorted = torch.empty(int(M_recv), int(H), device=device, dtype=torch.bfloat16)
-    _C.gather_from_pad_bf16(Ye_pad.data_ptr(), Ye_sorted.data_ptr(), int(M_recv), int(H), stream)
-
-    _C.return_scatter(
-      Ye_sorted.data_ptr(),
+    _C.return_scatter_from_pad_bf16(
+      Ye_pad.data_ptr(),
       out_f32.data_ptr(),
       int(M_recv), int(T), int(K),
       stream,
@@ -221,9 +218,6 @@ class _MoEBf16Fused(torch.autograd.Function):
       Xe_pad = Xe_pad.requires_grad_(True)
       Ye_pad = expert(Xe_pad, W1, W3, W2, offs_pad)
 
-    Ye_sorted = torch.empty(int(M_recv), int(H), device=device, dtype=torch.bfloat16)
-    _C.gather_from_pad_bf16(Ye_pad.detach().data_ptr(), Ye_sorted.data_ptr(), int(M_recv), int(H), stream)
-
     dYe_sorted = torch.empty(int(M_recv), int(H), device=device, dtype=torch.bfloat16)
     dGate_sorted = torch.empty(int(M_recv), device=device, dtype=torch.float32)
     dGates_tk_f32 = torch.zeros(int(T), int(K), device=device, dtype=torch.float32)
@@ -232,7 +226,7 @@ class _MoEBf16Fused(torch.autograd.Function):
       _C.gather_dy_dist_bf16(
         dOut.data_ptr(),
         eid.data_ptr(),
-        Ye_sorted.data_ptr(),
+        Ye_pad.detach().data_ptr(),
         row_id.data_ptr(),
         gate_sorted.data_ptr(),
         dYe_sorted.data_ptr(),
@@ -244,7 +238,7 @@ class _MoEBf16Fused(torch.autograd.Function):
     else:
       _C.gather_dy_bf16(
         dOut.data_ptr(),
-        Ye_sorted.data_ptr(),
+        Ye_pad.detach().data_ptr(),
         row_id.data_ptr(),
         gate_sorted.data_ptr(),
         dYe_sorted.data_ptr(),
@@ -328,9 +322,9 @@ class _MoEBlockscaledFused(torch.autograd.Function):
     M_host = torch.zeros(1, device='cpu', dtype=torch.int32).pin_memory()
     align = 128  # Required for blockscaled SF swizzle
 
-    M_recv = _C.dispatch_meta_bf16(
+    M_recv = _C.dispatch_meta_blockscaled(
       x.data_ptr(), eid.data_ptr(), gates_fp32.data_ptr(),
-      int(T), int(K), align,
+      int(T), int(K),
       offs_pad.data_ptr(), M_host.data_ptr(),
       stream,
     )
@@ -339,8 +333,8 @@ class _MoEBlockscaledFused(torch.autograd.Function):
     if M_recv <= 0:
       # DeepEP collectiveness: every rank must participate in return_scatter
       if is_dist:
-        dummy_ye = torch.empty(1, int(H), device=device, dtype=torch.bfloat16)
-        _C.return_scatter(dummy_ye.data_ptr(), out_f32.data_ptr(), 0, int(T), int(K), stream)
+        dummy_ye_pad = torch.empty(1, int(H), device=device, dtype=torch.bfloat16)
+        _C.return_scatter_from_pad_blockscaled(dummy_ye_pad.data_ptr(), out_f32.data_ptr(), 0, int(T), int(K), stream)
       ctx.rdep = rdep
       ctx.W_cache = W_cache
       ctx.T = int(T)
@@ -349,58 +343,23 @@ class _MoEBlockscaledFused(torch.autograd.Function):
       ctx.save_for_backward(x, eid, gates, W1, W3, W2)
       return out_f32.to(dtype=torch.bfloat16)
 
-    # Compute max_pad and extend last expert's padded region
-    max_pad = (int(M_recv) + E * (align - 1) + (align - 1)) // align * align
-    offs_pad[-1] = int(max_pad)
+    M_pad = int(M_host.item())
 
-    # Gather BF16 activations
-    Xe_pad = torch.empty(int(max_pad), int(H), device=device, dtype=torch.bfloat16)
-    _C.gather_xe_bf16(Xe_pad.data_ptr(), int(M_recv), int(max_pad), stream)
-
-    # Quantize locally: BF16 -> FP8/NVFP4
+    # Gather blockscaled activations into padded layout (quantized + packed SF)
     pack_factor = 2 if rdep.profile == 'fp8' else 4
     Hp = H // pack_factor
     sf_k = H // 32
     sf_k_pad = ((sf_k + 3) // 4) * 4
-    M_e_stride = ((rdep.capacity + 127) // 128) * 128  # 128-aligned capacity per expert
-
-    Xe_q = torch.empty(int(max_pad), Hp, device=device, dtype=torch.uint16)
-    Xe_sf = torch.empty(E, M_e_stride, sf_k_pad, device=device, dtype=torch.uint8)
-
-    # Quant kernels expect offs_with0 [E+1] with leading 0: [0, offs_pad[0], offs_pad[1], ...]
-    offs_with0 = torch.cat([torch.zeros(1, device=device, dtype=torch.int32), offs_pad])
-
-    if rdep.profile == 'fp8':
-      _C.quant_fp8_sf_strided_mma(
-        Xe_pad.data_ptr(), int(H),
-        Xe_q.data_ptr(), Hp,
-        Xe_sf.data_ptr(),
-        offs_with0.data_ptr(),
-        E, M_e_stride,
-        int(max_pad), int(H),
-        stream,
-      )
-    else:  # nvfp4
-      _C.quant_nvfp4_sf_strided_mma(
-        Xe_pad.data_ptr(), int(H),
-        Xe_q.data_ptr(), Hp,
-        Xe_sf.data_ptr(),
-        offs_with0.data_ptr(),
-        E, M_e_stride,
-        int(max_pad), int(H),
-        stream,
-      )
+    Xe_q = torch.empty(int(M_pad), Hp, device=device, dtype=torch.uint16)
+    Xe_sf = torch.empty(int(M_pad), sf_k_pad, device=device, dtype=torch.uint8)
+    _C.gather_xe_blockscaled(Xe_q.data_ptr(), Xe_sf.data_ptr(), int(M_recv), int(M_pad), stream)
 
     # Expert compute (blockscaled)
     from nmoe.blockscaled.grouped import expert_blockscaled
     Ye_pad = expert_blockscaled(Xe_q, Xe_sf, W_cache, offs_pad)
 
-    # Gather sorted and return scatter
-    Ye_sorted = torch.empty(int(M_recv), int(H), device=device, dtype=torch.bfloat16)
-    _C.gather_from_pad_bf16(Ye_pad.data_ptr(), Ye_sorted.data_ptr(), int(M_recv), int(H), stream)
-
-    _C.return_scatter(
-      Ye_sorted.data_ptr(),
+    _C.return_scatter_from_pad_blockscaled(
+      Ye_pad.data_ptr(),
       out_f32.data_ptr(),
       int(M_recv), int(T), int(K),
       stream,
@@ -503,87 +462,42 @@ class _MoEBlockscaledFused(torch.autograd.Function):
     Xe_pad = torch.empty(int(max_pad), int(H), device=device, dtype=torch.bfloat16)
     _C.gather_xe_bf16(Xe_pad.data_ptr(), int(M_recv), int(max_pad), stream)
 
-    # Get row_id and gate_sorted for dGate computation
+    # Get row_id and gate_sorted for backward computation
     row_id = torch.empty(int(M_recv), device=device, dtype=torch.int64)
     gate_sorted = torch.empty(int(M_recv), device=device, dtype=torch.float32)
     _C.gather_meta_sorted_bf16(row_id.data_ptr(), gate_sorted.data_ptr(), int(M_recv), stream)
 
-    # Quantize and run expert forward for Ye recomputation (needed for dGate)
-    pack_factor = 2 if rdep.profile == 'fp8' else 4
-    Hp = H // pack_factor
-    sf_k = H // 32
-    sf_k_pad = ((sf_k + 3) // 4) * 4
-    M_e_stride = ((rdep.capacity + 127) // 128) * 128
+    # SonicMoE optimization: compute dGate via ⟨A, dA'⟩ instead of ⟨dOut, Ye⟩
+    # This eliminates the expensive Ye_pad recomputation for dGate.
+    # A = post-SwiGLU activation, dA' = dYe @ W2.T (ungated gradient)
 
-    Xe_q = torch.empty(int(max_pad), Hp, device=device, dtype=torch.uint16)
-    Xe_sf = torch.empty(E, M_e_stride, sf_k_pad, device=device, dtype=torch.uint8)
-
-    # Quant kernels expect offs_with0 [E+1] with leading 0: [0, offs_pad[0], offs_pad[1], ...]
-    offs_with0 = torch.cat([torch.zeros(1, device=device, dtype=torch.int32), offs_pad])
-
-    if rdep.profile == 'fp8':
-      _C.quant_fp8_sf_strided_mma(
-        Xe_pad.data_ptr(), int(H),
-        Xe_q.data_ptr(), Hp,
-        Xe_sf.data_ptr(),
-        offs_with0.data_ptr(),
-        E, M_e_stride,
-        int(max_pad), int(H),
-        stream,
-      )
-    else:  # nvfp4
-      _C.quant_nvfp4_sf_strided_mma(
-        Xe_pad.data_ptr(), int(H),
-        Xe_q.data_ptr(), Hp,
-        Xe_sf.data_ptr(),
-        offs_with0.data_ptr(),
-        E, M_e_stride,
-        int(max_pad), int(H),
-        stream,
-      )
-
-    from nmoe.blockscaled.grouped import expert_blockscaled
-    Ye_pad = expert_blockscaled(Xe_q, Xe_sf, W_cache, offs_pad)
-
-    # Gather sorted Ye for dGate
-    Ye_sorted_unscaled = torch.empty(int(M_recv), int(H), device=device, dtype=torch.bfloat16)
-    _C.gather_from_pad_bf16(Ye_pad.data_ptr(), Ye_sorted_unscaled.data_ptr(), int(M_recv), int(H), stream)
-
-    # TODO(perf): The gather_dy kernels still compute dGate internally (dot product of Ye*dOut).
-    # This is wasted compute (~negligible). To fully remove, modify CUDA kernels in rdep.cu.
     dYe_sorted = torch.empty(int(M_recv), int(H), device=device, dtype=torch.bfloat16)
     dGate_sorted = torch.empty(int(M_recv), device=device, dtype=torch.float32)
     dGates_tk_f32 = torch.zeros(int(T), int(K), device=device, dtype=torch.float32)
 
-    if dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1:
-      _C.gather_dy_dist_bf16(
+    # SonicMoE optimization: compute dGate via ⟨A, dA'⟩ instead of ⟨dOut, Ye⟩
+    # This eliminates the expensive Ye_pad recomputation for dGate in both
+    # single-GPU and distributed modes.
+    is_dist = dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1
+    if is_dist:
+      # Distributed path: gather dYe across ranks with gate scaling (no dGate yet)
+      _C.gather_dy_nogate_dist_bf16(
         dOut.data_ptr(),
         eid.data_ptr(),
-        Ye_sorted_unscaled.data_ptr(),  # Ye only used for dGate which we discard
         row_id.data_ptr(),
         gate_sorted.data_ptr(),
         dYe_sorted.data_ptr(),
-        dGate_sorted.data_ptr(),
-        dGates_tk_f32.data_ptr(),
         int(M_recv), int(T), int(H), int(K),
         stream,
       )
     else:
-      _C.gather_dy_bf16(
+      # Single-GPU: gather dY with gate scaling (no dGate yet)
+      _C.gather_dy_nogate_bf16(
         dOut.data_ptr(),
-        Ye_sorted_unscaled.data_ptr(),  # Ye only used for dGate which we discard
         row_id.data_ptr(),
         gate_sorted.data_ptr(),
         dYe_sorted.data_ptr(),
-        dGate_sorted.data_ptr(),
         int(M_recv), int(T), int(H), int(K),
-        stream,
-      )
-      _C.scatter_gate_bf16(
-        dGate_sorted.data_ptr(),
-        row_id.data_ptr(),
-        dGates_tk_f32.data_ptr(),
-        int(M_recv), int(T), int(K),
         stream,
       )
 
@@ -616,6 +530,34 @@ class _MoEBlockscaledFused(torch.autograd.Function):
       int(max_pad), int(Dff),
       stream,
     )
+
+    # SonicMoE dGate identity: dGate = ⟨A, dA⟩ instead of ⟨dOut, Ye⟩
+    # This avoids recomputing Ye_pad in both single-GPU and distributed modes.
+    _C.dgate_from_adA_bf16(
+      A.data_ptr(),
+      dA.data_ptr(),
+      dGate_sorted.data_ptr(),
+      int(M_recv), int(Dff),
+      stream,
+    )
+    if is_dist:
+      # Distributed: send dGate back to source ranks via IPC
+      _C.send_dgate_dist_bf16(
+        row_id.data_ptr(),
+        dGate_sorted.data_ptr(),
+        dGates_tk_f32.data_ptr(),
+        int(M_recv), int(T), int(K),
+        stream,
+      )
+    else:
+      # Single-GPU: scatter dGate directly
+      _C.scatter_gate_bf16(
+        dGate_sorted.data_ptr(),
+        row_id.data_ptr(),
+        dGates_tk_f32.data_ptr(),
+        int(M_recv), int(T), int(K),
+        stream,
+      )
 
     copy_event.synchronize()
     offs_host = offs_pinned

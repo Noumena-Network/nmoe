@@ -107,8 +107,6 @@ struct NvshmemState {
     Meta*     meta_copy;       // [capacity] snapshot of dispatch meta for return
     // Blockscaled-only workspace
     uint8_t*  sfa_gather_tmp;  // [max_pad * Hsf] gathered rowwise SFA (row-major)
-    int*      offs_with0;      // [n_local+1] offsets with leading 0 for swizzle
-    int       M_e_swizzle_cap; // aligned capacity per expert (128)
     void*     sort_temp;       // CUB sort temp storage
     size_t    sort_temp_bytes;
 
@@ -230,6 +228,16 @@ int dispatch_hybrid_blockscaled(
     int** ipc_barrier_ptrs,
     cudaStream_t stream);
 
+// Gather blockscaled activations from hybrid IPC buffer into padded outputs.
+// Requires a prior dispatch_hybrid_blockscaled call (meta-only or full) to populate:
+// - g_nvshmem.order, g_nvshmem.dest, and local IPC receive buffers.
+void gather_xe_hybrid_blockscaled(
+    void* Xe_q_out,   // [M_pad, Hp] uint16
+    void* Xe_sf_out,  // [M_pad, Hsf] uint8 (packed MMA layout)
+    int M_recv,
+    int M_pad,
+    cudaStream_t stream);
+
 // ============================================================================
 // Hybrid Return Scatter
 // ============================================================================
@@ -238,6 +246,17 @@ int dispatch_hybrid_blockscaled(
 // Gathers expert outputs from local GPU, writes to source GPUs
 void return_scatter_hybrid_bf16(
     const __nv_bfloat16* Ye,    // [M_recv, H] expert outputs
+    float* out,                  // [T, H] output (accumulated)
+    int M_recv, int T, int K,
+    // IPC state
+    void** ipc_buffer_ptrs,
+    int** ipc_barrier_ptrs,
+    cudaStream_t stream);
+
+// Return scatter BF16 - hybrid path (from padded output layout)
+// Ye_pad: [M_pad, H], indexed via g_nvshmem.dest[sorted_i] -> pad_i.
+void return_scatter_hybrid_bf16_from_pad(
+    const __nv_bfloat16* Ye_pad, // [M_pad, H]
     float* out,                  // [T, H] output (accumulated)
     int M_recv, int T, int K,
     // IPC state
@@ -255,6 +274,16 @@ void return_scatter_hybrid_blockscaled(
     int** ipc_barrier_ptrs,
     cudaStream_t stream);
 
+// Return scatter blockscaled - hybrid path (from padded output layout)
+void return_scatter_hybrid_blockscaled_from_pad(
+    const __nv_bfloat16* Ye_pad, // [M_pad, H]
+    float* out,                  // [T, H] output (accumulated)
+    int M_recv, int T, int K,
+    // IPC state
+    void** ipc_buffer_ptrs,
+    int** ipc_barrier_ptrs,
+    cudaStream_t stream);
+
 // ============================================================================
 // Hybrid Backward (BF16 payload)
 // ============================================================================
@@ -263,7 +292,7 @@ void return_scatter_hybrid_blockscaled(
 void gather_dy_hybrid_bf16(
     const __nv_bfloat16* dY_local,   // [T, H]
     const int* eids,                 // [T, K] global expert ids
-    const __nv_bfloat16* Ye_sorted,  // [M, H]
+    const __nv_bfloat16* Ye_pad,     // [M_pad, H] (indexed via dest)
     const int64_t* row_id,           // [M]
     const float* gate_sorted,        // [M]
     __nv_bfloat16* dYe_out,          // [M, H]
