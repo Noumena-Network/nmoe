@@ -9,7 +9,7 @@ Output formats:
 from __future__ import annotations
 
 import torch
-from nmoe.rdep import _C
+from nmoe.csrc import rdep as _C  # Direct import to avoid heavy runtime deps / circular imports
 
 
 def quantize_fp8(x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
