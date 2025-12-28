@@ -17,7 +17,7 @@ on:
       runner_version:
         description: 'GitHub Actions runner version (e.g. 2.330.0) or "latest"'
         required: false
-        default: 'latest'
+        default: '2.330.0'
 
 env:
   REGISTRY: ghcr.io
@@ -61,8 +61,12 @@ jobs:
           fi
 
           RV_IN="${{ github.event.inputs.runner_version }}"
-          if [ -z "${RV_IN}" ] || [ "${RV_IN}" = "latest" ]; then
-            RV_TAG="$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest | sed -n 's/.*\"tag_name\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p')"
+          if [ -z "${RV_IN}" ]; then
+            RV_IN="2.330.0"
+          fi
+
+          if [ "${RV_IN}" = "latest" ]; then
+            RV_TAG="$(curl -fsSL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/actions/runner/releases/latest | sed -n 's/.*\"tag_name\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p')"
             if [ -z "${RV_TAG}" ]; then
               echo "failed to resolve latest runner version" >&2
               exit 2
