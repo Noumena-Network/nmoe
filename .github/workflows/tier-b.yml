@@ -44,14 +44,18 @@ jobs:
         with:
           ref: refs/pull/${{ inputs.pr_number }}/merge
           fetch-depth: 0
+          path: checkout
 
       - name: Build CUDA extension (PR merge ref)
+        working-directory: checkout
         run: |
           set -euo pipefail
+          . /workspace/nmoe/.venv/bin/activate
           make -C nmoe/csrc
 
       - name: Run gates
         id: run
+        working-directory: checkout
         env:
           BUNDLE: ${{ inputs.bundle }}
           SINGLE_GATE: ${{ inputs.single_gate }}
@@ -59,6 +63,7 @@ jobs:
           PERF_BUDGET_PCT: ${{ inputs.perf_budget_pct }}
         run: |
           set -euo pipefail
+          . /workspace/nmoe/.venv/bin/activate
           python - <<'PY'
           import json
           import os
@@ -289,8 +294,10 @@ jobs:
 
       - name: Job summary
         if: always()
+        working-directory: checkout
         run: |
           set -euo pipefail
+          . /workspace/nmoe/.venv/bin/activate
           python - <<'PY'
           import json
           from pathlib import Path
@@ -321,8 +328,9 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            if (!fs.existsSync('tier_b_results.json')) return;
-            const data = JSON.parse(fs.readFileSync('tier_b_results.json', 'utf8'));
+            const resultsPath = 'checkout/tier_b_results.json';
+            if (!fs.existsSync(resultsPath)) return;
+            const data = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
             const gateIds = data.gate_ids || [];
             const results = data.results || {};
             let body = `### Tier B gate results (${data.bundle})\\n\\n`;
