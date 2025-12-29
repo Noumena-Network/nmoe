@@ -75,8 +75,6 @@ jobs:
           context: .
           file: docker/Dockerfile.base
           push: true
-          provenance: false
-          sbom: false
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-${{ steps.meta.outputs.sha }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base-latest
@@ -89,8 +87,6 @@ jobs:
           context: .
           file: docker/Dockerfile.train
           push: true
-          provenance: false
-          sbom: false
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:train-${{ steps.meta.outputs.sha }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:train-latest
@@ -105,8 +101,6 @@ jobs:
           context: .
           file: docker/Dockerfile.runner
           push: true
-          provenance: false
-          sbom: false
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:runner-${{ steps.meta.outputs.sha }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:runner-latest
