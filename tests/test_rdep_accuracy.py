@@ -63,12 +63,16 @@ def main() -> None:
     # Keep shapes tiny but aligned to the kernel contracts (H multiple of 128).
     T, H, Dff, E, K = 32, 128, 256, 4, 1
 
-    x = torch.randn((T, H), device=device, dtype=torch.bfloat16, requires_grad=True)
+    # Scale inputs to realistic magnitudes (like bench_moe_e2e.py) to avoid
+    # huge intermediate values that amplify quantization error in blockscaled tests.
+    # Uses ~Xavier init scale (1/sqrt(fan_in)) to match production model behavior.
+    # Scale before requires_grad to keep tensors as leaves for gradient tests.
+    x = (torch.randn((T, H), device=device, dtype=torch.bfloat16) * 0.1).requires_grad_(True)
     eid = torch.randint(0, E, (T, K), device=device, dtype=torch.int32)
     gates = torch.ones((T, K), device=device, dtype=torch.bfloat16)
-    W1 = torch.randn((E, H, Dff), device=device, dtype=torch.bfloat16, requires_grad=True)
-    W3 = torch.randn((E, H, Dff), device=device, dtype=torch.bfloat16, requires_grad=True)
-    W2 = torch.randn((E, Dff, H), device=device, dtype=torch.bfloat16, requires_grad=True)
+    W1 = (torch.randn((E, H, Dff), device=device, dtype=torch.bfloat16) * 0.02).requires_grad_(True)
+    W3 = (torch.randn((E, H, Dff), device=device, dtype=torch.bfloat16) * 0.02).requires_grad_(True)
+    W2 = (torch.randn((E, Dff, H), device=device, dtype=torch.bfloat16) * 0.02).requires_grad_(True)
 
     rdep = Rdep(dim=H, n_local=E, topk=K, profile="bf16", capacity=T * K)
 

@@ -2255,14 +2255,17 @@ def run_grouped_blockscaled_strided(
     # When fuse_swiglu_quant=True, pass output activation and SF pointers
     out_act_ptr = out_act.data_ptr() if out_act is not None else 0
     out_sf_ptr = out_sf_mkl.data_ptr() if out_sf_mkl is not None else 0
+
+    # NOTE: CuTeDSL 4.3.4 requires explicit typing for scalar args to avoid
+    # pointer truncation/mis-marshalling in the JIT launcher.
     compiled(
         init_a, init_b, init_c, init_sfa, init_sfb,
         E, dim_size_mnkl_cute, strides_abc_cute,
         ptrs_abc_cute, ptrs_sfasfb_cute,
-        A_pad.data_ptr(), A_row_bytes,
-        out_act_ptr,
-        out_sf_ptr,
-        total_num_clusters,
+        cutlass.Int64(A_pad.data_ptr()), cutlass.Int32(A_row_bytes),
+        cutlass.Int64(out_act_ptr),
+        cutlass.Int64(out_sf_ptr),
+        cutlass.Int32(total_num_clusters),
         tensormap_cute, max_active_clusters, cu_stream,
     )
 
