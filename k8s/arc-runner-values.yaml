@@ -20,6 +20,8 @@ template:
   spec:
     restartPolicy: Never
     runtimeClassName: nvidia
+    imagePullSecrets:
+      - name: ghcr-secret
     tolerations:
       - key: nvidia.com/gpu
         value: "true"
