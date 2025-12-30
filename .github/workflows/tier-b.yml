@@ -384,11 +384,11 @@ jobs:
 
             for (const d of toDelete) {
               try {
-                await github.request('DELETE /repos/{owner}/{repo}/deployments/{deployment_id}', {
+                // GitHub requires force=true as a query param for this endpoint.
+                await github.request('DELETE /repos/{owner}/{repo}/deployments/{deployment_id}?force=true', {
                   owner,
                   repo,
                   deployment_id: d.id,
-                  force: true,
                 });
                 core.info(`Deleted deployment id=${d.id}`);
               } catch (e) {
