@@ -2168,10 +2168,10 @@ def run_grouped_blockscaled_strided(
             tensor_of_tensormap, params.max_active_clusters, cu_stream,
             options="--opt-level 2",
         )
-        _STRIDED_COMPILE_CACHE[ckey] = (compiled, init_a, init_b, init_c, init_sfa, init_sfb)
+        _STRIDED_COMPILE_CACHE[ckey] = (compiled, init_a, init_b, init_c, init_sfa, init_sfb, params.max_active_clusters)
         compiled_tuple = _STRIDED_COMPILE_CACHE[ckey]
 
-    compiled, init_a, init_b, init_c, init_sfa, init_sfb = compiled_tuple
+    compiled, init_a, init_b, init_c, init_sfa, init_sfb, max_active_clusters = compiled_tuple
 
     # Allocate metadata tensors on GPU — reuse cached workspace
     KernelCls = NmoeGroupedScaledGemmKernel
@@ -2257,13 +2257,13 @@ def run_grouped_blockscaled_strided(
     out_sf_ptr = out_sf_mkl.data_ptr() if out_sf_mkl is not None else 0
     compiled(
         init_a, init_b, init_c, init_sfa, init_sfb,
-        dim_size_mnkl_cute, strides_abc_cute,
+        E, dim_size_mnkl_cute, strides_abc_cute,
         ptrs_abc_cute, ptrs_sfasfb_cute,
         A_pad.data_ptr(), A_row_bytes,
         out_act_ptr,
         out_sf_ptr,
         total_num_clusters,
-        tensormap_cute, cu_stream,
+        tensormap_cute, max_active_clusters, cu_stream,
     )
 
 
