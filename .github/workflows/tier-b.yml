@@ -31,13 +31,16 @@ on:
         required: false
         type: string
 
+concurrency:
+  group: tier-b-b200-gates
+  cancel-in-progress: false
+
 jobs:
   tier-b:
     runs-on: b200
-    environment: b200
+    environment: b200-gates
     permissions:
       contents: read
-      deployments: write
       pull-requests: write
     steps:
       - name: Checkout PR merge ref
@@ -351,16 +354,24 @@ jobs:
               body,
             });
 
-      - name: Cleanup GitHub Deployments (keep sidebar empty)
-        if: always()
+  cleanup-deployments:
+    name: Cleanup Deployments (b200-gates)
+    runs-on: ubuntu-latest
+    needs: tier-b
+    if: always()
+    permissions:
+      deployments: write
+    steps:
+      - name: Delete GitHub Deployments for this run (b200-gates only)
         uses: actions/github-script@v7
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const sha = context.sha;
-            const targetEnv = 'b200';
+            const targetEnv = 'b200-gates';
 
+            // NOTE: We intentionally do NOT delete "real" deployments. Only ephemeral gate deployments.
             const deployments = await github.paginate(github.rest.repos.listDeployments, {
               owner,
               repo,
