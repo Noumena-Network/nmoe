@@ -1933,6 +1933,8 @@ class NmoeGroupedScaledGemmKernel:
 # ==============================================================================
 
 # Separate compile cache for strided path (different compile key structure)
+# NOTE: max_clusters is NOT included - the compiled kernel works for any cluster
+# count up to the workspace size. Workspace is separately managed.
 @dataclass(frozen=True)
 class _StridedCompileKey:
     device_index: int
@@ -1940,7 +1942,6 @@ class _StridedCompileKey:
     profile: str
     c_dtype_name: str
     group_count: int
-    max_clusters: int  # Upper bound for tensormap allocation
     mma_tiler_mn: tuple[int, int]
     cluster_shape_mn: tuple[int, int]
     use_2cta: bool
@@ -2072,14 +2073,13 @@ def run_grouped_blockscaled_strided(
     _require_sm100(device_index)
     sm_arch = torch.cuda.get_device_capability(device_index)
 
-    # Build compile key (capacity-aware; stable across routing).
+    # Build compile key (stable across batches - max_clusters NOT included).
     ckey = _StridedCompileKey(
         device_index=int(device_index),
         sm_arch=tuple(sm_arch),
         profile=profile,
         c_dtype_name=str(c_dtype_cutlass),
         group_count=int(E),
-        max_clusters=int(max_clusters_cap),
         mma_tiler_mn=tuple(mma_tiler_mn),
         cluster_shape_mn=tuple(cluster_shape_mn),
         use_2cta=bool(use_2cta),
