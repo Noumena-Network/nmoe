@@ -98,7 +98,6 @@ class Config:
   # Training
   # =============================================================================
   steps: int = 10000
-  exit_after: Optional[int] = None
   batch_size: int = 8
   seq_len: int = 4096
   seed: int = 42
