@@ -2481,7 +2481,7 @@ def run_grouped_blockscaled_strided(
         cutlass.Int64(out_sf_base_ptr),
         cutlass.Int32(out_sf_expert_bytes),
         cutlass.Int32(total_num_clusters),
-        tensormap_cute, cu_stream,
+        tensormap_cute, max_active_clusters, cu_stream,
     )
 
 
