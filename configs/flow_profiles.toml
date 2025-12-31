@@ -1,7 +1,7 @@
 # Flow profiles for nmoe training runs.
 #
-# Token targets derived from DeepSeek-V3 (14.8T @ 37B active = 400x ratio).
-# See docs/TRAINING_TARGETS.md for full rationale.
+# Token targets derived from DeepSeek-V3 scaling (14.8T tokens @ 37B active params = 400x ratio).
+# Rationale: Chinchilla-optimal is ~20x, but modern practice uses 200-400x for better quality.
 #
 # Flows:
 #   dev       - Does it run? Smoke test. (~100M tokens)

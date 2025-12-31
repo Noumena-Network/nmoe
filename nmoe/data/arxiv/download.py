@@ -246,9 +246,9 @@ def download_ar5iv_dataset(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # ar5iv dataset is distributed as tar.gz bundles per quality level
-    # This is a simplified implementation - actual URLs would need to be obtained
-    # from the ar5iv dataset page
+    # ar5iv dataset is distributed as tar.gz bundles per quality level.
+    # Primary: HuggingFace Hub (if available)
+    # Fallback: Manual download with clear instructions
 
     logger.info(f"Downloading ar5iv dataset to {output_dir}")
     logger.info(f"Quality levels: {quality_levels}")

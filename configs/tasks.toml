@@ -18,7 +18,9 @@
 # CORPUS - Global invariants (enforced for all tasks)
 # -----------------------------------------------------------------------------
 [corpus]
-root = "/data/corpus"  # Single root, shared by all runs
+# Root path resolved from NMOE_DATA_PATH env var, defaults to /data
+# Expected layout: $NMOE_DATA_PATH/corpus/, $NMOE_DATA_PATH/datasets/
+root = "${NMOE_DATA_PATH:-/data}/corpus"
 
 [corpus.contract]
 tokenizer = "o200k_harmony"
@@ -57,7 +59,7 @@ train = "fineweb_edu_100b/train/**/*.npy"
 
 [tasks.fineweb_edu_100b.raw]
 kind = "parquet"
-glob = "/data/datasets/fineweb_edu_100b/shard_*.parquet"  # Top-level only (Karpathy shuffle)
+glob = "${NMOE_DATA_PATH:-/data}/datasets/fineweb_edu_100b/shard_*.parquet"  # Top-level only (Karpathy shuffle)
 text_field = "text"
 id_field = "id"
 
@@ -71,7 +73,7 @@ train = "fineweb_edu_score2/train/**/*.npy"
 
 [tasks.fineweb_edu_score2.raw]
 kind = "parquet"
-glob = "/data/datasets/fineweb_edu_score2/data/**/*.parquet"
+glob = "${NMOE_DATA_PATH:-/data}/datasets/fineweb_edu_score2/data/**/*.parquet"
 text_field = "text"
 id_field = "id"
 
@@ -85,7 +87,7 @@ train = "fineweb_edu/train/**/*.npy"
 
 [tasks.fineweb_edu.raw]
 kind = "parquet"
-glob = "/data/datasets/fineweb_edu/data/**/*.parquet"
+glob = "${NMOE_DATA_PATH:-/data}/datasets/fineweb_edu/data/**/*.parquet"
 text_field = "text"
 id_field = "id"
 
@@ -99,7 +101,7 @@ train = "dclm/train/**/*.npy"
 
 [tasks.dclm.raw]
 kind = "jsonl_zst"
-glob = "/data/datasets/dclm/global-shard_*_of_10/local-shard_*_of_10/shard_*_processed.jsonl.zst"
+glob = "${NMOE_DATA_PATH:-/data}/datasets/dclm/global-shard_*_of_10/local-shard_*_of_10/shard_*_processed.jsonl.zst"
 text_field = "text"
 id_field = "url"
 
@@ -113,7 +115,7 @@ train = "dolma3_web/train/**/*.npy"
 
 [tasks.dolma3_web.raw]
 kind = "jsonl_zst"
-glob = "/data/datasets/dolma3_mix/data/common_crawl-*/*.jsonl.zst"
+glob = "${NMOE_DATA_PATH:-/data}/datasets/dolma3_mix/data/common_crawl-*/*.jsonl.zst"
 text_field = "text"
 id_field = "id"
 
@@ -127,7 +129,7 @@ train = "eai_math/train/**/*.npy"
 
 [tasks.eai_math.raw]
 kind = "parquet"
-glob = "/data/datasets/eai_math/data/*.parquet"
+glob = "${NMOE_DATA_PATH:-/data}/datasets/eai_math/data/*.parquet"
 text_field = "text"
 id_field = "id"
 
@@ -141,7 +143,7 @@ train = "eai_med/train/**/*.npy"
 
 [tasks.eai_med.raw]
 kind = "parquet"
-glob = "/data/datasets/eai_med/data/*.parquet"
+glob = "${NMOE_DATA_PATH:-/data}/datasets/eai_med/data/*.parquet"
 text_field = "text"
 id_field = "id"
 
@@ -156,13 +158,13 @@ description = "The Stack v2 (code), materialized via Software Heritage content f
 [tasks.stack_v2.shards]
 train = "stack_v2/train/**/*.npy"
 
-# NOTE: /data/datasets/stack_v2 parquet schema has no `content`/`text`.
-# We materialize content into /data/datasets/stack_v2_content via:
-#   k8s/dataset-download-stack-content.yaml
+# NOTE: Stack v2 parquet schema has no `content`/`text` field.
+# Content must be materialized separately using nmoe.data.stack_v2_materialize
+# before this task can be prepped.
 
 [tasks.stack_v2.raw]
 kind = "jsonl_zst"
-glob = "/data/datasets/stack_v2_content/nmoe-download-stack-v2-content/**/*.jsonl.zst"
+glob = "${NMOE_DATA_PATH:-/data}/datasets/stack_v2_content/nmoe-download-stack-v2-content/**/*.jsonl.zst"
 text_field = "text"
 id_field = "id"
 
@@ -179,7 +181,7 @@ train = "eai_code/train/**/*.npy"
 
 [tasks.eai_code.raw]
 kind = "parquet"
-glob = "/data/datasets/eai_code/data/**/*.parquet"
+glob = "${NMOE_DATA_PATH:-/data}/datasets/eai_code/data/**/*.parquet"
 text_field = "text"
 id_field = "id"
 
@@ -193,7 +195,7 @@ train = "dolma3_code/train/**/*.npy"
 
 [tasks.dolma3_code.raw]
 kind = "jsonl_zst"
-glob = "/data/datasets/dolma3_mix/data/stack_edu-*/*.jsonl.zst"
+glob = "${NMOE_DATA_PATH:-/data}/datasets/dolma3_mix/data/stack_edu-*/*.jsonl.zst"
 text_field = "text"
 id_field = "id"
 
@@ -226,7 +228,7 @@ train = "eai_stem/train/**/*.npy"
 
 [tasks.eai_stem.raw]
 kind = "parquet"
-glob = "/data/datasets/eai_stem/data/**/*.parquet"
+glob = "${NMOE_DATA_PATH:-/data}/datasets/eai_stem/data/**/*.parquet"
 text_field = "text"
 id_field = "id"
 
@@ -240,7 +242,7 @@ train = "dolma3_math/train/**/*.npy"
 
 [tasks.dolma3_math.raw]
 kind = "jsonl_zst"
-glob = "/data/datasets/dolma3_mix/data/finemath-3plus/*.jsonl.zst"
+glob = "${NMOE_DATA_PATH:-/data}/datasets/dolma3_mix/data/finemath-3plus/*.jsonl.zst"
 text_field = "text"
 id_field = "id"
 
@@ -254,7 +256,7 @@ train = "dolma3_wiki/train/**/*.npy"
 
 [tasks.dolma3_wiki.raw]
 kind = "jsonl_zst"
-glob = "/data/datasets/dolma3_mix/data/dolma1_7-wiki-en/*.jsonl.zst"
+glob = "${NMOE_DATA_PATH:-/data}/datasets/dolma3_mix/data/dolma1_7-wiki-en/*.jsonl.zst"
 text_field = "text"
 id_field = "id"
 
@@ -268,7 +270,7 @@ train = "dolma3_arxiv/train/**/*.npy"
 
 [tasks.dolma3_arxiv.raw]
 kind = "jsonl_zst"
-glob = "/data/datasets/dolma3_mix/data/rpj-proofpile-arxiv/*.jsonl.zst"
+glob = "${NMOE_DATA_PATH:-/data}/datasets/dolma3_mix/data/rpj-proofpile-arxiv/*.jsonl.zst"
 text_field = "text"
 id_field = "id"
 
@@ -282,7 +284,7 @@ train = "dolma3_science_pdfs/train/**/*.npy"
 
 [tasks.dolma3_science_pdfs.raw]
 kind = "jsonl_zst"
-glob = "/data/datasets/dolma3_mix/data/olmocr_science_pdfs-*/*.jsonl.zst"
+glob = "${NMOE_DATA_PATH:-/data}/datasets/dolma3_mix/data/olmocr_science_pdfs-*/*.jsonl.zst"
 text_field = "text"
 id_field = "id"
 

@@ -8,7 +8,8 @@
 # - HYDRA paths are configured here so `--hydra-filter` doesn't require extra CLI flags.
 
 [hydra]
-checkpoint = "/data/checkpoints/gpt-oss-20b"
+# Checkpoint path resolved from HYDRA_CHECKPOINT env var or --hydra-checkpoint CLI flag
+checkpoint = "${HYDRA_CHECKPOINT:-}"
 heads_dir = "nmoe/data"
 calibration = "nmoe/data"
 
