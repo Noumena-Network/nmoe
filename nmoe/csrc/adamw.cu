@@ -9,6 +9,7 @@
 // Target: NVIDIA Blackwell B200 (sm_100a). No fallbacks.
 
 #include "ptx.cu"
+#include "swizzle.cuh"
 
 #include <cuda_bf16.h>
 #include <cuda_runtime.h>
@@ -33,26 +34,6 @@ constexpr int THREADS_Y = 8;
 constexpr int BLOCK_THREADS = THREADS_X * THREADS_Y;
 
 __host__ __device__ __forceinline__ int ceil_div(int a, int b) { return (a + b - 1) / b; }
-
-// CUTLASS MMA swizzle offset for scale factors (same as quant.cu).
-__device__ __forceinline__ size_t cutlass_sf_swizzle_offset(size_t m, size_t k, uint32_t M, uint32_t sf_k) {
-  (void)M;
-  const uint32_t atom_m = 128;
-  const uint32_t atom_k = 4;
-  const uint32_t atom_size = atom_m * atom_k;  // 512
-  const uint32_t rest_k = sf_k / atom_k;
-
-  const size_t m_32 = m % 32;
-  const size_t m_4 = (m / 32) % 4;
-  const size_t m_rest = m / atom_m;
-
-  const size_t k_4 = k % atom_k;
-  const size_t k_rest = k / atom_k;
-
-  const size_t atom_offset = m_32 * 16 + m_4 * 4 + k_4;
-  const size_t atom_idx = m_rest * rest_k + k_rest;
-  return atom_idx * atom_size + atom_offset;
-}
 
 __device__ __forceinline__ float bf16_to_f32(__nv_bfloat16 v) { return __bfloat162float(v); }
 __device__ __forceinline__ __nv_bfloat16 f32_to_bf16(float v) { return __float2bfloat16(v); }
@@ -573,4 +554,3 @@ extern "C" cudaError_t expert_adamw_step(
       inv_bias_correction2_sqrt,
       stream);
 }
-

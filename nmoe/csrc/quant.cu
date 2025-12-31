@@ -14,6 +14,7 @@
 // Target: sm_100a (Blackwell). NVFP4 path requires NMOE_ENABLE_PTX_E2M1=1.
 
 #include "ptx.cu"
+#include "swizzle.cuh"
 #include <vector>
 
 namespace nmoe {
@@ -40,10 +41,6 @@ constexpr int SF_VEC_FP4 = 32;      // Scale factor granularity for NVFP4 (32 BF
 __host__ __device__ __forceinline__ int ceil_div(int a, int b) {
     return (a + b - 1) / b;
 }
-
-// Forward decl (defined below) so quant/SwiGLU kernels can write MMA-layout SF.
-__device__ __forceinline__ size_t cutlass_sf_swizzle_offset(
-    size_t m, size_t k, uint32_t M, uint32_t sf_k);
 
 // ============================================================================
 // FP8 Dequantization (packed 2xFP8 per u16) -> BF16
@@ -1232,44 +1229,6 @@ inline cudaError_t launch_quantize_nvfp4_with_sfa(
 // Input:  sf_mkl [M, sf_k] uint8 E8M0, row-major (M and sf_k already padded to 128 and 4)
 // Output: sf_mma [M * sf_k] uint8 E8M0, CUTLASS MMA layout
 
-__device__ __forceinline__ size_t cutlass_sf_swizzle_offset(
-    size_t m, size_t k, uint32_t M, uint32_t sf_k)
-{
-    // CUTLASS DSL BlockScaledBasicChunk atom layout:
-    //   atom shape = ((32, 4), (sf_vec, 4))
-    //   atom stride = ((16, 4), (0, 1))
-    //
-    // The sf_vec dimension has stride=0 (broadcast), so only (m_32, m_4, k_4) matter.
-    // Within-atom offset = m_32 * 16 + m_4 * 4 + k_4
-    //
-    // tile_to_shape tiles atoms across (rest_m, rest_k) with row-major order:
-    //   atom_idx = m_rest * rest_k + k_rest
-    //   total_offset = atom_idx * atom_size + atom_offset
-    //   where atom_size = 128 * 4 = 512
-
-    const uint32_t atom_m = 128;
-    const uint32_t atom_k = 4;
-    const uint32_t atom_size = atom_m * atom_k;  // 512
-    const uint32_t rest_k = sf_k / atom_k;
-
-    // Decompose m
-    const size_t m_32 = m % 32;
-    const size_t m_4 = (m / 32) % 4;
-    const size_t m_rest = m / atom_m;
-
-    // Decompose k
-    const size_t k_4 = k % atom_k;
-    const size_t k_rest = k / atom_k;
-
-    // Within-atom offset (from atom strides (16, 4, 0, 1))
-    const size_t atom_offset = m_32 * 16 + m_4 * 4 + k_4;
-
-    // Atom index (row-major over (rest_m, rest_k): rest_k varies fastest)
-    const size_t atom_idx = m_rest * rest_k + k_rest;
-
-    return atom_idx * atom_size + atom_offset;
-}
-
   __global__ void k_swizzle_sf_mkl_to_mma(
       const uint8_t* __restrict__ sf_mkl,  // [M, sf_k] row-major
       uint8_t* __restrict__ sf_mma,         // [M * sf_k] swizzled
@@ -1283,7 +1242,7 @@ __device__ __forceinline__ size_t cutlass_sf_swizzle_offset(
     const int m = idx / sf_k;
     const int k = idx % sf_k;
 
-    const size_t dst_idx = cutlass_sf_swizzle_offset(m, k, M, sf_k);
+    const size_t dst_idx = nmoe::cutlass_sf_swizzle_offset(m, k, static_cast<uint32_t>(M), static_cast<uint32_t>(sf_k));
     sf_mma[dst_idx] = sf_mkl[idx];
 }
 
@@ -1486,7 +1445,7 @@ __global__ void k_build_grouped_gemm_metadata(
     int64_t A_base,  int64_t A_row_bytes,                   // A_pad base ptr and byte stride per row
     int64_t B_base,  int64_t B_expert_bytes,                // B stacked: B[e] = B_base + e*B_expert_bytes
     int64_t C_base,  int64_t C_row_bytes,                   // C_pad base ptr and byte stride per row
-    int64_t SFA_base, int64_t SFA_expert_bytes,             // SFA stacked: SFA[e] = SFA_base + e*SFA_expert_bytes
+    int64_t SFA_base, int64_t SFA_row_bytes,                // SFA packed: SFA row byte stride (SFA_ptr = base + offs[e]*SFA_row_bytes)
     int64_t SFB_base, int64_t SFB_expert_bytes,             // SFB stacked: SFB[e] = SFB_base + e*SFB_expert_bytes
     // Tensor metadata - ELEMENT strides for CUTLASS
     int32_t A_stride0_elem, int32_t A_stride1_elem,         // A element strides
@@ -1528,9 +1487,9 @@ __global__ void k_build_grouped_gemm_metadata(
     ptrs_abc[e * 3 + 2] = C_base + static_cast<int64_t>(start) * C_row_bytes;
 
     // ptrs_sfasfb[e] = (SFA_ptr, SFB_ptr)
-    // Activation SFA is stored per-expert as a fixed-stride MMA-swizzled chunk.
-    // SFA_expert_bytes is the per-expert byte stride (e.g. M_e_stride * sf_k_pad).
-    ptrs_sfasfb[e * 2 + 0] = SFA_base + static_cast<int64_t>(e) * SFA_expert_bytes;
+    // Activation SFA is stored packed by padded row: [M_pad, sf_k_pad] (MMA swizzled).
+    // offs[] is 128-aligned, so each expert's slice is a contiguous swizzled chunk.
+    ptrs_sfasfb[e * 2 + 0] = SFA_base + static_cast<int64_t>(start) * SFA_row_bytes;
     ptrs_sfasfb[e * 2 + 1] = SFB_base + static_cast<int64_t>(e) * SFB_expert_bytes;
 }
 
@@ -1540,7 +1499,7 @@ inline cudaError_t launch_build_grouped_gemm_metadata(
     int64_t A_base, int64_t A_row_bytes,
     int64_t B_base, int64_t B_expert_bytes,
     int64_t C_base, int64_t C_row_bytes,
-    int64_t SFA_base, int64_t SFA_expert_bytes,  // SFA uses expert-based indexing
+    int64_t SFA_base, int64_t SFA_row_bytes,     // SFA uses padded-row indexing
     int64_t SFB_base, int64_t SFB_expert_bytes,
     // Element strides for CUTLASS
     int32_t A_stride0_elem, int32_t A_stride1_elem,
@@ -1557,7 +1516,7 @@ inline cudaError_t launch_build_grouped_gemm_metadata(
         A_base, A_row_bytes,
         B_base, B_expert_bytes,
         C_base, C_row_bytes,
-        SFA_base, SFA_expert_bytes,
+        SFA_base, SFA_row_bytes,
         SFB_base, SFB_expert_bytes,
         A_stride0_elem, A_stride1_elem,
         B_stride0_elem, B_stride1_elem,
@@ -2126,7 +2085,7 @@ cudaError_t build_grouped_gemm_metadata(
     int64_t A_base, int64_t A_row_bytes,
     int64_t B_base, int64_t B_expert_bytes,
     int64_t C_base, int64_t C_row_bytes,
-    int64_t SFA_base, int64_t SFA_expert_bytes,
+    int64_t SFA_base, int64_t SFA_row_bytes,
     int64_t SFB_base, int64_t SFB_expert_bytes,
     // Element strides for CUTLASS
     int32_t A_stride0_elem, int32_t A_stride1_elem,
@@ -2141,7 +2100,7 @@ cudaError_t build_grouped_gemm_metadata(
         A_base, A_row_bytes,
         B_base, B_expert_bytes,
         C_base, C_row_bytes,
-        SFA_base, SFA_expert_bytes,
+        SFA_base, SFA_row_bytes,
         SFB_base, SFB_expert_bytes,
         A_stride0_elem, A_stride1_elem,
         B_stride0_elem, B_stride1_elem,

@@ -27,6 +27,17 @@ try:
     import cutlass.pipeline as pipeline
     import cutlass.utils.blackwell_helpers as sm100_utils
     import cutlass.utils.blockscaled_layout as blockscaled_utils
+    from cutlass.cutlass_dsl import dsl_user_op
+    from cutlass._mlir.dialects import arith, builtin, llvm
+    from cutlass.cute.typing import (
+        Float32,
+        Float4E2M1FN,
+        Float8E4M3FN,
+        Int32,
+        Int4,
+        Uint16,
+        Uint8,
+    )
 except Exception as e:  # pragma: no cover - environment guard
     raise RuntimeError(
         "CuTeDSL (nvidia-cutlass-dsl) is required. Install >= 4.3.1.\n"
@@ -99,6 +110,130 @@ def _require_sm100(device_index: int | None = None) -> None:
 # Keyed by (device_index, group_count, max_clusters_capacity).
 # No public knobs; single-path behavior.
 # -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Fused epilogue helpers (CuTeDSL).
+# These are used only when fuse_swiglu_quant=True.
+# -----------------------------------------------------------------------------
+
+def _tanh_approx_f32(x: cutlass.Float32) -> cutlass.Float32:
+    # Exact tanh is acceptable here; input is already half-scaled (x = 0.5 * gate).
+    return cute.tanh(x)
+
+
+@dsl_user_op
+def _e8m0_encode_from_pos_f32(scale: Float32, *, loc=None, ip=None):
+    """Encode a positive FP32 scale to E8M0 (uint8 exponent byte).
+
+    Matches `nmoe/csrc/ptx.cu:e8m0_encode_from_pos_f32` exactly using bit ops
+    (no log2/exp2), avoiding numeric edge-case drift and fixing CuTeDSL scalar
+    math codegen issues.
+
+    For normalized FP32: `scale = 2^(E-127) * (1.mantissa)`.
+    Then `ceil(log2(scale)) = (E-127) + (mantissa != 0)`, so the E8M0 byte is:
+      `byte = E + (mantissa != 0)` (clamped to 254).
+    """
+    # Bitcast float32 to i32 and extract exponent/mantissa.
+    scale_v = scale.ir_value(loc=loc, ip=ip) if hasattr(scale, 'ir_value') else scale
+    bits_i32 = arith.bitcast(Int32.mlir_type, scale_v, loc=loc, ip=ip)
+    c23 = arith.constant(Int32.mlir_type, 23, loc=loc, ip=ip)
+    c0xff = arith.constant(Int32.mlir_type, 0xFF, loc=loc, ip=ip)
+    e_i32 = arith.andi(arith.shrui(bits_i32, c23, loc=loc, ip=ip), c0xff, loc=loc, ip=ip)
+
+    c_mant_mask = arith.constant(Int32.mlir_type, 0x7FFFFF, loc=loc, ip=ip)
+    mant_i32 = arith.andi(bits_i32, c_mant_mask, loc=loc, ip=ip)
+
+    c0 = arith.constant(Int32.mlir_type, 0, loc=loc, ip=ip)
+    c1 = arith.constant(Int32.mlir_type, 1, loc=loc, ip=ip)
+    mant_nonzero = arith.cmpi(arith.CmpIPredicate.ne, mant_i32, c0, loc=loc, ip=ip)
+    e_i32 = arith.addi(e_i32, arith.select(mant_nonzero, c1, c0, loc=loc, ip=ip), loc=loc, ip=ip)
+
+    # Clamp to [0, 254].
+    c254 = arith.constant(Int32.mlir_type, 254, loc=loc, ip=ip)
+    e_i32 = arith.minui(e_i32, c254, loc=loc, ip=ip)
+
+    return arith.trunci(Uint8.mlir_type, e_i32, loc=loc, ip=ip)
+
+
+@dsl_user_op
+def _e8m0_inv_decode_to_f32(scale_byte: Uint8, *, loc=None, ip=None):
+    """Decode inv_scale from an E8M0 byte (uint8): inv_scale = 2^(127 - byte).
+
+    Matches `nmoe/csrc/ptx.cu:e8m0_inv_decode_to_f32`:
+      - inv_byte = 254 - min(byte, 254)
+      - float bits = (inv_byte == 0 ? 0x00400000 : inv_byte << 23)
+    """
+    scale_byte_v = scale_byte.ir_value(loc=loc, ip=ip) if hasattr(scale_byte, 'ir_value') else scale_byte
+    b_i32 = arith.extui(Int32.mlir_type, scale_byte_v, loc=loc, ip=ip)
+    c254 = arith.constant(Int32.mlir_type, 254, loc=loc, ip=ip)
+    b_i32 = arith.minui(b_i32, c254, loc=loc, ip=ip)
+    inv_i32 = arith.subi(c254, b_i32, loc=loc, ip=ip)
+
+    c23 = arith.constant(Int32.mlir_type, 23, loc=loc, ip=ip)
+    bits_normal = arith.shli(inv_i32, c23, loc=loc, ip=ip)
+
+    c0 = arith.constant(Int32.mlir_type, 0, loc=loc, ip=ip)
+    is_zero = arith.cmpi(arith.CmpIPredicate.eq, inv_i32, c0, loc=loc, ip=ip)
+    c_subnormal = arith.constant(Int32.mlir_type, 0x00400000, loc=loc, ip=ip)
+    bits = arith.select(is_zero, c_subnormal, bits_normal, loc=loc, ip=ip)
+
+    return arith.bitcast(Float32.mlir_type, bits, loc=loc, ip=ip)
+
+
+@dsl_user_op
+def _fp8_pack2_e4m3(x0: Float32, x1: Float32, *, loc=None, ip=None):
+    """Pack two FP8 E4M3 values into a uint16 (low byte = x0, high byte = x1).
+
+    Uses inline PTX: cvt.rn.satfinite.e4m3x2.f32 (sm_89+).
+    Matches nmoe/csrc/ptx.cu behavior.
+
+    TODO: Explore CUTLASS EVT (Epilogue Visitor Tree) for native FP8 support
+    which may provide better codegen and avoid inline PTX.
+    """
+    x0_v = x0.ir_value(loc=loc, ip=ip) if hasattr(x0, 'ir_value') else x0
+    x1_v = x1.ir_value(loc=loc, ip=ip) if hasattr(x1, 'ir_value') else x1
+    # cvt.rn.satfinite.e4m3x2.f32 packs two f32 -> one b16 (two FP8 bytes)
+    # PTX uses .b16 register for packed output. Order: low byte = $2, high byte = $1.
+    result = llvm.inline_asm(
+        Uint16.mlir_type,
+        [x1_v, x0_v],  # Swapped to get x0 in low byte
+        "{ .reg.b16 tmp; cvt.rn.satfinite.e4m3x2.f32 tmp, $1, $2; mov.u16 $0, tmp; }",
+        "=h,f,f",
+        has_side_effects=False,
+        loc=loc,
+        ip=ip,
+    )
+    return result
+
+
+@dsl_user_op
+def _nvfp4_pack2_e2m1(x0: Float32, x1: Float32, *, loc=None, ip=None):
+    """Pack two NVFP4 E2M1 values into a uint8 (low nibble = x0, high nibble = x1).
+
+    Uses inline PTX: cvt.rn.satfinite.e2m1x2.f32 (sm_100a / Blackwell).
+    Matches nmoe/csrc/ptx.cu behavior.
+
+    TODO: Explore CUTLASS EVT (Epilogue Visitor Tree) for native NVFP4 support
+    which may provide better codegen and avoid inline PTX.
+    """
+    x0_v = x0.ir_value(loc=loc, ip=ip) if hasattr(x0, 'ir_value') else x0
+    x1_v = x1.ir_value(loc=loc, ip=ip) if hasattr(x1, 'ir_value') else x1
+    # cvt.rn.satfinite.e2m1x2.f32 packs two f32 -> one .b8 (two E2M1 nibbles)
+    # PTX uses .b8 register for packed output. Order: low nibble = $2, high nibble = $1.
+    # Output to u32 via mov.b32 then extract low byte, since LLVM lacks direct b8 support.
+    result_i32 = llvm.inline_asm(
+        Int32.mlir_type,
+        [x1_v, x0_v],  # Swapped to get x0 in low nibble
+        "{ .reg.b8 tmp; cvt.rn.satfinite.e2m1x2.f32 tmp, $1, $2; mov.b32 $0, {tmp, tmp, tmp, tmp}; }",
+        "=r,f,f",
+        has_side_effects=False,
+        loc=loc,
+        ip=ip,
+    )
+    # Extract low byte
+    return arith.trunci(Uint8.mlir_type, result_i32, loc=loc, ip=ip)
+
+
 _STRIDED_WORKSPACE_CACHE: dict[tuple, tuple] = {}
 
 def _get_strided_workspace(device, E: int, max_clusters: int, KernelCls):
@@ -1371,8 +1506,8 @@ class NmoeGroupedScaledGemmKernel:
                                     scale = amax / dtype_max
                                     if scale <= cutlass.Float32(0.0):
                                         scale = cutlass.Float32(1.0)
-                                    scale_byte = _e8m0_encode_from_pos_f32(scale)
-                                    inv_scale = _e8m0_inv_decode_to_f32(scale_byte)
+                                    scale_byte = cutlass.Uint8(_e8m0_encode_from_pos_f32(scale))
+                                    inv_scale = cutlass.Float32(_e8m0_inv_decode_to_f32(scale_byte))
 
                                 inv_scale = cute.arch.shuffle_sync(inv_scale, offset=0, mask_and_clamp=mask_and_clamp)
 
@@ -1798,6 +1933,8 @@ class NmoeGroupedScaledGemmKernel:
 # ==============================================================================
 
 # Separate compile cache for strided path (different compile key structure)
+# NOTE: max_clusters is NOT included - the compiled kernel works for any cluster
+# count up to the workspace size. Workspace is separately managed.
 @dataclass(frozen=True)
 class _StridedCompileKey:
     device_index: int
@@ -1805,7 +1942,6 @@ class _StridedCompileKey:
     profile: str
     c_dtype_name: str
     group_count: int
-    max_clusters: int  # Upper bound for tensormap allocation
     mma_tiler_mn: tuple[int, int]
     cluster_shape_mn: tuple[int, int]
     use_2cta: bool
@@ -1819,18 +1955,18 @@ _STRIDED_COMPILE_CACHE: dict[_StridedCompileKey, Tuple] = {}
 
 @dataclass
 class _ExpertScratch:
-    M_cap: int             # capacity in rows for H13/A_u16
-    H13: torch.Tensor        # [M_pad, 2*Dff] BF16 intermediate for W13 GEMM
-    A_u16: torch.Tensor      # packed activations storage (uint16)
-    A_sf_mma: torch.Tensor   # [E, M_e_stride, sf_k_pad] uint8 MMA layout
+    M_cap: int               # capacity in rows for activation scratch
+    A_u16: torch.Tensor      # packed post-SwiGLU activations (uint16)
+    A_sf_mkl: torch.Tensor   # [M_cap, sf_k] row-major E8M0 (epilogue output)
+    A_sf_mma: torch.Tensor   # [M_cap, sf_k] MMA-swizzled E8M0 (packed by padded row)
 
 
-_EXPERT_SCRATCH: dict[tuple[int, str, int, int, int, int], _ExpertScratch] = {}
+_EXPERT_SCRATCH: dict[tuple[int, str, int, int, int], _ExpertScratch] = {}
 
 
 def run_grouped_blockscaled_strided(
     A_pad: torch.Tensor,           # [M_pad, K_packed, 1] quantized activations
-    SFA_pad: torch.Tensor,         # [E, M_e_stride, sf_k_pad] uint8 E8M0 scale factors (MMA swizzled)
+    SFA_pad: torch.Tensor,         # [M_pad, sf_k_pad] uint8 E8M0 scale factors (MMA swizzled, packed by padded row)
     B_stacked: torch.Tensor,       # [E, N, K_packed, 1] stacked weights
     SFB_stacked: torch.Tensor,     # [E, N, sf_k, 1] uint8 E8M0 scale factors (MMA swizzled)
     C_pad: torch.Tensor,           # [M_pad, N, 1] output (pre-allocated)
@@ -1852,7 +1988,7 @@ def run_grouped_blockscaled_strided(
     Requirements:
     - Weights must be stacked: B_stacked[e] is the weight for expert e
     - Scale factors must be pre-swizzled to MMA layout (uint8 E8M0)
-    - Output C_pad must be pre-allocated (ignored when fuse_swiglu_quant=True)
+    - Output C_pad must be CUDA bf16/fp16; it may be a small dummy when fuse_swiglu_quant=True.
     - All experts have same N, K dimensions (only M varies per expert)
 
     When fuse_swiglu_quant=True, the kernel uses the vendored fused epilogue
@@ -1899,12 +2035,11 @@ def run_grouped_blockscaled_strided(
     ct_m = mma_tiler_mn[0] * cluster_shape_mn[0]
     ct_n = mma_tiler_mn[1] * cluster_shape_mn[1]
 
-    # Workspace capacity is fixed by SFA layout (RDEP emits fixed-stride per-expert chunks).
-    # IMPORTANT: SFA_pad.stride(0) is the per-expert byte stride used by the GPU
-    # metadata builder; we must not reinterpret or compact this tensor.
-    if not (SFA_pad.is_cuda and SFA_pad.dtype == torch.uint8 and SFA_pad.ndim == 3 and SFA_pad.shape[0] == E):
-        raise ValueError("SFA_pad must be uint8 CUDA tensor with shape [E, M_e_stride, sf_k_pad].")
-    M_e_stride = int(SFA_pad.shape[1])
+    # Activation SFA is packed by padded row: [M_pad, sf_k_pad] uint8, already swizzled to MMA layout.
+    # Each expert's base pointer is derived from offs[e] (128-aligned), so no per-expert stride tensor is needed.
+    if not (SFA_pad.is_cuda and SFA_pad.dtype == torch.uint8 and SFA_pad.ndim == 2 and int(SFA_pad.shape[0]) == int(M_pad)):
+        raise ValueError("SFA_pad must be uint8 CUDA tensor with shape [M_pad, sf_k_pad] (MMA layout).")
+    sf_k_pad = int(SFA_pad.shape[1])
 
     # Tile-scheduler upper bound (for tensormap workspace sizing).
     #
@@ -1920,9 +2055,8 @@ def run_grouped_blockscaled_strided(
     #
     # This is much tighter than E*ceil(M_e_stride/ct_m) and avoids pathological
     # JIT compile times for small runs on large-capacity buffers.
-    align_m = 128
-    M_pad_cap = M_e_stride + E * (align_m - 1)
-    tiles_m_cap = (M_pad_cap + E * (ct_m - 1) + (ct_m - 1)) // ct_m
+    # With packed SFA and 128-aligned offs, the only stable upper bound we have here is M_pad itself.
+    tiles_m_cap = max(1, (M_pad + (ct_m - 1)) // ct_m)
     tiles_n = (N + ct_n - 1) // ct_n
     max_clusters_cap = max(1, int(tiles_m_cap) * int(tiles_n))
 
@@ -1939,14 +2073,13 @@ def run_grouped_blockscaled_strided(
     _require_sm100(device_index)
     sm_arch = torch.cuda.get_device_capability(device_index)
 
-    # Build compile key (capacity-aware; stable across routing).
+    # Build compile key (stable across batches - max_clusters NOT included).
     ckey = _StridedCompileKey(
         device_index=int(device_index),
         sm_arch=tuple(sm_arch),
         profile=profile,
         c_dtype_name=str(c_dtype_cutlass),
         group_count=int(E),
-        max_clusters=int(max_clusters_cap),
         mma_tiler_mn=tuple(mma_tiler_mn),
         cluster_shape_mn=tuple(cluster_shape_mn),
         use_2cta=bool(use_2cta),
@@ -2035,10 +2168,10 @@ def run_grouped_blockscaled_strided(
             tensor_of_tensormap, params.max_active_clusters, cu_stream,
             options="--opt-level 2",
         )
-        _STRIDED_COMPILE_CACHE[ckey] = (compiled, init_a, init_b, init_c, init_sfa, init_sfb)
+        _STRIDED_COMPILE_CACHE[ckey] = (compiled, init_a, init_b, init_c, init_sfa, init_sfb, params.max_active_clusters)
         compiled_tuple = _STRIDED_COMPILE_CACHE[ckey]
 
-    compiled, init_a, init_b, init_c, init_sfa, init_sfb = compiled_tuple
+    compiled, init_a, init_b, init_c, init_sfa, init_sfb, max_active_clusters = compiled_tuple
 
     # Allocate metadata tensors on GPU — reuse cached workspace
     KernelCls = NmoeGroupedScaledGemmKernel
@@ -2084,10 +2217,9 @@ def run_grouped_blockscaled_strided(
     # For bf16-backed (C): byte_stride = element_stride * 2
     A_row_bytes = A_pad.stride(0)  # uint8 backed, stride is bytes
     B_expert_bytes = B_stacked.stride(0)  # uint8 backed, stride is bytes
-    C_row_bytes = C_pad.stride(0) * 2  # bf16, need to multiply by element size
-    # SFA uses expert-based indexing: SFA_pad should be [E, M_e_swizzle, sf_k_pad] or similar
-    # The stride(0) gives us the per-expert byte stride
-    SFA_expert_bytes = SFA_pad.stride(0)  # Expert stride in bytes
+    # C is ignored when fuse_swiglu_quant=True; use 0 strides to keep pointer arithmetic in-bounds.
+    C_row_bytes = 0 if fuse_swiglu_quant else (C_pad.stride(0) * 2)
+    SFA_row_bytes = SFA_pad.stride(0)  # Row stride in bytes (packed SFA)
     SFB_expert_bytes = SFB_stacked.stride(0)  # uint8 backed
 
     # Call our CUDA kernel to build metadata on GPU
@@ -2104,12 +2236,13 @@ def run_grouped_blockscaled_strided(
         A_pad.data_ptr(), A_row_bytes,
         B_stacked.data_ptr(), B_expert_bytes,
         C_pad.data_ptr(), C_row_bytes,
-        SFA_pad.data_ptr(), SFA_expert_bytes,  # SFA uses expert-based indexing
+        SFA_pad.data_ptr(), SFA_row_bytes,  # SFA uses padded-row indexing via offs
         SFB_stacked.data_ptr(), SFB_expert_bytes,
         # Element strides for CUTLASS
         A_stride0_elem, A_stride1_elem,
         B_stride0_elem, B_stride1_elem,
-        C_stride0_elem, C_stride1_elem,
+        (0 if fuse_swiglu_quant else C_stride0_elem),
+        (0 if fuse_swiglu_quant else C_stride1_elem),
         N, K,
         dim_size_mnkl_torch.data_ptr(),
         strides_abc_torch.data_ptr(),
@@ -2119,15 +2252,21 @@ def run_grouped_blockscaled_strided(
     )
 
     # Launch CUTLASS kernel with GPU-built metadata
+    # When fuse_swiglu_quant=True, pass output activation and SF pointers
+    out_act_ptr = out_act.data_ptr() if out_act is not None else 0
+    out_sf_ptr = out_sf_mkl.data_ptr() if out_sf_mkl is not None else 0
+
+    # NOTE: CuTeDSL 4.3.4 requires explicit typing for scalar args to avoid
+    # pointer truncation/mis-marshalling in the JIT launcher.
     compiled(
         init_a, init_b, init_c, init_sfa, init_sfb,
-        dim_size_mnkl_cute, strides_abc_cute,
+        E, dim_size_mnkl_cute, strides_abc_cute,
         ptrs_abc_cute, ptrs_sfasfb_cute,
-        A_pad.data_ptr(), A_row_bytes,
-        0,
-        0,
-        total_num_clusters,
-        tensormap_cute, cu_stream,
+        cutlass.Int64(A_pad.data_ptr()), cutlass.Int32(A_row_bytes),
+        cutlass.Int64(out_act_ptr),
+        cutlass.Int64(out_sf_ptr),
+        cutlass.Int32(total_num_clusters),
+        tensormap_cute, max_active_clusters, cu_stream,
     )
 
 
@@ -2302,7 +2441,7 @@ def expert_blockscaled(
 
     Contract (production):
       - Xe_q_pad: [M_pad, Hp] uint16 packed activations from RDEP dispatch
-      - Xe_sf_pad: [E, M_e_stride, sf_k_pad] uint8 E8M0 SFA in MMA layout (per-expert strided)
+      - Xe_sf_pad: [M_pad, sf_k_pad] uint8 E8M0 SFA in MMA layout (packed by padded row)
       - offs_pad: [E] int32 cumulative padded offsets (no leading 0)
 
     Implementation:
@@ -2319,28 +2458,23 @@ def expert_blockscaled(
     if M_pad == 0:
         return torch.zeros(0, H, device=Xe_q_pad.device, dtype=torch.bfloat16)
 
-    if not (Xe_sf_pad.is_cuda and Xe_sf_pad.dtype == torch.uint8 and Xe_sf_pad.ndim == 3 and int(Xe_sf_pad.shape[0]) == E):
-        raise ValueError("Xe_sf_pad must be uint8 CUDA tensor with shape [E, M_e_stride, sf_k_pad] (MMA layout).")
-
     device_index = Xe_q_pad.device.index if Xe_q_pad.device.index is not None else torch.cuda.current_device()
-    M_e_stride = int(Xe_sf_pad.shape[1])
-    sf_k = (Dff + 31) // 32
-    sf_k_pad = ((sf_k + 3) // 4) * 4
-    if sf_k_pad != sf_k:
-        raise ValueError(f"Dff must be a multiple of 128 (sf_k%4==0). Got Dff={Dff}.")
-    scratch_key = (int(device_index), str(profile), int(E), int(H), int(Dff), int(M_e_stride))
+    scratch_key = (int(device_index), str(profile), int(E), int(H), int(Dff))
     scratch = _EXPERT_SCRATCH.get(scratch_key)
     if scratch is None or int(scratch.M_cap) < int(M_pad):
         M_cap = ((int(M_pad) + 127) // 128) * 128
-        H13 = torch.empty((M_cap, 2 * Dff), device=Xe_q_pad.device, dtype=torch.bfloat16)
         if profile == "fp8":
             A_u16 = torch.empty((M_cap, Dff // 2), device=Xe_q_pad.device, dtype=torch.uint16)
         elif profile == "nvfp4":
             A_u16 = torch.empty((M_cap, Dff // 4), device=Xe_q_pad.device, dtype=torch.uint16)
         else:
             raise ValueError(f"Unsupported profile: {profile}")
-        A_sf_mma = torch.empty((E, M_e_stride, sf_k_pad), device=Xe_q_pad.device, dtype=torch.uint8)
-        scratch = _ExpertScratch(M_cap=M_cap, H13=H13, A_u16=A_u16, A_sf_mma=A_sf_mma)
+        sf_k = (Dff + 31) // 32
+        if (sf_k & 3) != 0:
+            raise ValueError(f"Dff must be a multiple of 128 (sf_k%4==0). Got Dff={Dff}.")
+        A_sf_mkl = torch.empty((M_cap, sf_k), device=Xe_q_pad.device, dtype=torch.uint8)
+        A_sf_mma = torch.empty((M_cap, sf_k), device=Xe_q_pad.device, dtype=torch.uint8)
+        scratch = _ExpertScratch(M_cap=M_cap, A_u16=A_u16, A_sf_mma=A_sf_mma, A_sf_mkl=A_sf_mkl)
         _EXPERT_SCRATCH[scratch_key] = scratch
 
     # offs: [E+1] with leading 0.
@@ -2359,32 +2493,36 @@ def expert_blockscaled(
     else:
         raise ValueError(f"Unsupported profile: {profile}")
 
-    # GEMM 1+2 (fused W13): H13 = A @ W13.T (BF16 output).
+    # GEMM 1+2 (fused W13): fused epilogue computes SwiGLU + quantize, no BF16 [M,2*Dff] materialization.
+    dummy_c = torch.empty((1, 1, 1), device=Xe_q_pad.device, dtype=torch.bfloat16)
     run_grouped_blockscaled_strided(
-        A_q, Xe_sf_pad, W_cache.W13_q, W_cache.W13_sf_mma, scratch.H13[:M_pad].unsqueeze(-1), offs,
-        profile=profile, N=2 * Dff, K=H,
+        A_q,
+        Xe_sf_pad,
+        W_cache.W13_q,
+        W_cache.W13_sf_mma,
+        dummy_c,
+        offs,
+        profile=profile,
+        N=2 * Dff,
+        K=H,
+        fuse_swiglu_quant=True,
+        out_act=scratch.A_u16,
+        out_sf_mkl=scratch.A_sf_mkl,
     )
 
     stream = torch.cuda.current_stream(Xe_q_pad.device)
+    sf_k = int(scratch.A_sf_mkl.shape[1])
+    rdep.swizzle_sf_mkl_to_mma(
+        scratch.A_sf_mkl.data_ptr(),
+        scratch.A_sf_mma.data_ptr(),
+        M_pad,
+        sf_k,
+        stream,
+    )
+
     if profile == "fp8":
-        rdep.swiglu_quant_fp8_sf_strided_mma(
-            scratch.H13.data_ptr(), scratch.H13.stride(0),
-            scratch.A_u16.data_ptr(), scratch.A_u16.stride(0),
-            scratch.A_sf_mma.data_ptr(),
-            offs.data_ptr(), E, M_e_stride,
-            M_pad, Dff,
-            stream,
-        )
         A_q_3 = scratch.A_u16[:M_pad].view(torch.uint8).view(M_pad, Dff, 1).view(torch.float8_e4m3fn)
     elif profile == "nvfp4":
-        rdep.swiglu_quant_nvfp4_sf_strided_mma(
-            scratch.H13.data_ptr(), scratch.H13.stride(0),
-            scratch.A_u16.data_ptr(), scratch.A_u16.stride(0),
-            scratch.A_sf_mma.data_ptr(),
-            offs.data_ptr(), E, M_e_stride,
-            M_pad, Dff,
-            stream,
-        )
         A_q_3 = scratch.A_u16[:M_pad].view(torch.uint8).view(M_pad, Dff // 2, 1)
     else:
         raise ValueError(f"Unsupported profile: {profile}")
@@ -2392,7 +2530,7 @@ def expert_blockscaled(
     # GEMM 3: Y = A @ W2.T
     Y_pad = torch.empty((M_pad, H, 1), device=Xe_q_pad.device, dtype=torch.bfloat16)
     run_grouped_blockscaled_strided(
-        A_q_3, scratch.A_sf_mma, W_cache.W2_q, W_cache.W2_sf_mma, Y_pad, offs,
+        A_q_3, scratch.A_sf_mma[:M_pad], W_cache.W2_q, W_cache.W2_sf_mma, Y_pad, offs,
         profile=profile, N=H, K=Dff,
     )
 

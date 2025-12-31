@@ -70,7 +70,7 @@ static __host__ __device__ inline ABC coeff_simple() {
   return {3.4445f, -4.7750f, 2.0315f};
 }
 
-static const ABC COEFF_QUINTIC[5] = {
+[[maybe_unused]] static const ABC COEFF_QUINTIC[5] = {
   {4.0848f, -6.8946f, 2.9270f},
   {3.9505f, -6.3029f, 2.6377f},
   {3.7418f, -5.5913f, 2.3037f},
@@ -79,7 +79,7 @@ static const ABC COEFF_QUINTIC[5] = {
 };
 
 // Optional: Polar Express set (unused by default)
-static const ABC COEFF_POLAR_EXPRESS[8] = {
+[[maybe_unused]] static const ABC COEFF_POLAR_EXPRESS[8] = {
   {7.2086f, -15.5131f, 9.0178f},
   {3.9623f,  -2.5813f, 0.4542f},
   {3.9466f,  -2.5765f, 0.4544f},
@@ -373,10 +373,6 @@ extern "C" void muon_plan_run(void* plan,
   // Batched strides (column-major view): X_col is N x M with lda=N and stride=N*M
   const int lda_x = N; // leading dimension of X_col
   const int64_t stride_x = (int64_t)N * (int64_t)M; // elements
-  const int ldc_a = M; // default (used in some paths); actual per-iter leading dim may be S
-  const int64_t stride_a = (int64_t)M * (int64_t)M; // FP32 elems between batches (max size)
-
-  const cudaDataType Atype_bf16 = CUDA_R_16BF;
   const cudaDataType F32 = CUDA_R_32F;
   const cublasComputeType_t compute = CUBLAS_COMPUTE_32F_FAST_TF32;
 

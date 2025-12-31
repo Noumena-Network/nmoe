@@ -61,21 +61,51 @@ extern "C" {
                      void* Xe_out, int* offs_pad_out, int* dest_out,
                      int64_t* row_id_out, float* gate_out,
                      int* M_pad_out, cudaStream_t stream);
+  int  rdep_dispatch_meta_blockscaled(const void* x, const int* eids, const float* gates,
+                                     int T, int K,
+                                     int* offs_pad_out, int* M_pad_out,
+                                     cudaStream_t stream);
+  void rdep_gather_xe_blockscaled(void* Xe_q_out, void* Xe_sf_out, int M_recv, int M_pad, cudaStream_t stream);
+  int  rdep_dispatch_blockscaled(const void* x, const int* eids, const float* gates,
+                                int T, int K,
+                                void* Xe_q_out, void* Xe_sf_out,
+                                int* offs_pad_out, int* dest_out,
+                                int64_t* row_id_out, float* gate_out,
+                                int* M_pad_out, cudaStream_t stream);
   void rdep_return_scatter(const void* Ye, void* out, int M_recv, int T, int K,
                            cudaStream_t stream);
+  void rdep_return_scatter_from_pad_bf16(const void* Ye_pad, void* out, int M_recv, int T, int K,
+                                        cudaStream_t stream);
+  void rdep_return_scatter_from_pad_blockscaled(const void* Ye_pad, void* out, int M_recv, int T, int K,
+                                               cudaStream_t stream);
   void rdep_gather_dy_bf16(const void* dY, const void* Ye, const int64_t* row_id, const float* gate,
                            void* dYe_out, float* dGate_out,
                            int M, int T, int H, int K, cudaStream_t stream);
   void rdep_scatter_gate_bf16(const float* dGate_sorted, const int64_t* row_id,
                               float* dGates_tk, int M, int T, int K, cudaStream_t stream);
+  // SonicMoE dGate identity: gather dY with gate scaling, defer dGate to ⟨A, dA'⟩
+  void rdep_gather_dy_nogate_bf16(const void* dY, const int64_t* row_id,
+                                  const float* gate, void* dYe_out,
+                                  int M, int T, int H, int K, cudaStream_t stream);
+  void rdep_dgate_from_adA_bf16(const void* A_pad, const void* dA_pad,
+                                float* dGate_sorted_out,
+                                int M, int D, cudaStream_t stream);
+  // SonicMoE distributed: gather dYe across ranks, then send dGate back
+  void rdep_gather_dy_nogate_dist_bf16(const void* dY_local, const int* eids,
+                                       const int64_t* row_id, const float* gate_sorted,
+                                       void* dYe_out,
+                                       int M, int T, int H, int K, cudaStream_t stream);
+  void rdep_send_dgate_dist_bf16(const int64_t* row_id, const float* dGate_sorted,
+                                 float* dGates_tk_out,
+                                 int M, int T, int K, cudaStream_t stream);
   void rdep_scatter_dx_bf16(const void* dXe_pad, const int* dest, const int64_t* row_id,
                             void* dX_out, int M, int T, int H, int K, cudaStream_t stream);
   void rdep_scatter_dx_bf16_internal(const void* dXe_pad, const int64_t* row_id,
                                      void* dX_out, int M, int T, int H, int K, cudaStream_t stream);
-  void rdep_gather_dy_dist_bf16(const void* dY_local, const int* eids, const void* Ye_sorted,
-                                const int64_t* row_id, const float* gate_sorted,
-                                void* dYe_out, float* dGate_sorted_out, float* dGates_tk_out,
-                                int M, int T, int H, int K, cudaStream_t stream);
+	  void rdep_gather_dy_dist_bf16(const void* dY_local, const int* eids, const void* Ye_pad,
+	                                const int64_t* row_id, const float* gate_sorted,
+	                                void* dYe_out, float* dGate_sorted_out, float* dGates_tk_out,
+	                                int M, int T, int H, int K, cudaStream_t stream);
   void rdep_scatter_dx_dist_bf16(const void* dXe_sorted, const int64_t* row_id,
                                  void* dX_out, int M, int T, int H, int K, cudaStream_t stream);
 
@@ -176,19 +206,19 @@ extern "C" {
       float weight_decay, float eps,
       float step_size, float inv_bias_correction2_sqrt,
       cudaStream_t stream);
-  cudaError_t build_grouped_gemm_metadata(
-      const int32_t* offs, int E,
-      int64_t A_base, int64_t A_row_bytes,
-      int64_t B_base, int64_t B_expert_bytes,
-      int64_t C_base, int64_t C_row_bytes,
-      int64_t SFA_base, int64_t SFA_expert_bytes,
-      int64_t SFB_base, int64_t SFB_expert_bytes,
-      int32_t A_stride0_elem, int32_t A_stride1_elem,
-      int32_t B_stride0_elem, int32_t B_stride1_elem,
-      int32_t C_stride0_elem, int32_t C_stride1_elem,
-      int32_t N, int32_t K,
-      int32_t* sizes_mnkl, int32_t* strides_abc, int64_t* ptrs_abc, int64_t* ptrs_sfasfb,
-      cudaStream_t stream);
+	  cudaError_t build_grouped_gemm_metadata(
+	      const int32_t* offs, int E,
+	      int64_t A_base, int64_t A_row_bytes,
+	      int64_t B_base, int64_t B_expert_bytes,
+	      int64_t C_base, int64_t C_row_bytes,
+	      int64_t SFA_base, int64_t SFA_row_bytes,
+	      int64_t SFB_base, int64_t SFB_expert_bytes,
+	      int32_t A_stride0_elem, int32_t A_stride1_elem,
+	      int32_t B_stride0_elem, int32_t B_stride1_elem,
+	      int32_t C_stride0_elem, int32_t C_stride1_elem,
+	      int32_t N, int32_t K,
+	      int32_t* sizes_mnkl, int32_t* strides_abc, int64_t* ptrs_abc, int64_t* ptrs_sfasfb,
+	      cudaStream_t stream);
   cudaError_t grouped_dense_nvfp4_gemm_bf16_strided(
       const int32_t* sizes_mnkl,
       const int32_t* strides_abc,
@@ -349,6 +379,18 @@ PYBIND11_MODULE(rdep, m) {
      py::arg("stream") = py::none(),
      "Scatter expert outputs back to tokens (BF16)");
 
+  m.def("return_scatter_from_pad_bf16", [](uintptr_t Ye_pad_ptr, uintptr_t out_ptr,
+                                          int M_recv, int T, int K,
+                                          py::object stream) {
+    rdep_return_scatter_from_pad_bf16(
+        reinterpret_cast<const void*>(Ye_pad_ptr),
+        reinterpret_cast<void*>(out_ptr),
+        M_recv, T, K, to_stream(stream));
+  }, py::arg("Ye_pad"), py::arg("out"),
+     py::arg("M_recv"), py::arg("T"), py::arg("K"),
+     py::arg("stream") = py::none(),
+     "Scatter expert outputs from padded layout Ye_pad[M_pad,H] back to tokens (BF16 path).");
+
   // ========== BF16 Backward Helpers (single-GPU milestone) ==========
   m.def("gather_dy_bf16", [](uintptr_t dY_ptr, uintptr_t Ye_ptr,
                             uintptr_t row_id_ptr, uintptr_t gate_ptr,
@@ -385,6 +427,74 @@ PYBIND11_MODULE(rdep, m) {
      py::arg("M"), py::arg("T"), py::arg("K"),
      py::arg("stream") = py::none(),
      "Scatter dGate[M] back to [T,K] (BF16 path)");
+
+  // SonicMoE dGate identity: gather dY with gate scaling, defer dGate
+  m.def("gather_dy_nogate_bf16", [](uintptr_t dY_ptr, uintptr_t row_id_ptr,
+                                    uintptr_t gate_ptr, uintptr_t dYe_out_ptr,
+                                    int M, int T, int H, int K,
+                                    py::object stream) {
+    rdep_gather_dy_nogate_bf16(
+        reinterpret_cast<const void*>(dY_ptr),
+        reinterpret_cast<const int64_t*>(row_id_ptr),
+        reinterpret_cast<const float*>(gate_ptr),
+        reinterpret_cast<void*>(dYe_out_ptr),
+        M, T, H, K,
+        to_stream(stream));
+  }, py::arg("dY"), py::arg("row_id"), py::arg("gate"), py::arg("dYe_out"),
+     py::arg("M"), py::arg("T"), py::arg("H"), py::arg("K"),
+     py::arg("stream") = py::none(),
+     "Gather dY[T,H] -> dYe[M,H] with gate scaling (defer dGate to dgate_from_adA)");
+
+  // SonicMoE dGate identity: dGate = ⟨A, dA'⟩ instead of ⟨dOut, Ye⟩
+  m.def("dgate_from_adA_bf16", [](uintptr_t A_pad_ptr, uintptr_t dA_pad_ptr,
+                                  uintptr_t dGate_sorted_ptr,
+                                  int M, int D,
+                                  py::object stream) {
+    rdep_dgate_from_adA_bf16(
+        reinterpret_cast<const void*>(A_pad_ptr),
+        reinterpret_cast<const void*>(dA_pad_ptr),
+        reinterpret_cast<float*>(dGate_sorted_ptr),
+        M, D,
+        to_stream(stream));
+  }, py::arg("A_pad"), py::arg("dA_pad"), py::arg("dGate_sorted"),
+     py::arg("M"), py::arg("D"),
+     py::arg("stream") = py::none(),
+     "SonicMoE dGate: dGate[i] = sum_d(A[pad_i,d] * dA[pad_i,d])");
+
+  // SonicMoE distributed: gather dYe across ranks with gate scaling (no dGate)
+  m.def("gather_dy_nogate_dist_bf16", [](uintptr_t dY_ptr, uintptr_t eids_ptr,
+                                         uintptr_t row_id_ptr, uintptr_t gate_ptr,
+                                         uintptr_t dYe_ptr,
+                                         int M, int T, int H, int K,
+                                         py::object stream) {
+    rdep_gather_dy_nogate_dist_bf16(
+        reinterpret_cast<const void*>(dY_ptr),
+        reinterpret_cast<const int*>(eids_ptr),
+        reinterpret_cast<const int64_t*>(row_id_ptr),
+        reinterpret_cast<const float*>(gate_ptr),
+        reinterpret_cast<void*>(dYe_ptr),
+        M, T, H, K,
+        to_stream(stream));
+  }, py::arg("dY"), py::arg("eids"), py::arg("row_id"), py::arg("gate"), py::arg("dYe_out"),
+     py::arg("M"), py::arg("T"), py::arg("H"), py::arg("K"),
+     py::arg("stream") = py::none(),
+     "SonicMoE distributed: gather dYe with gate scaling (defer dGate to send_dgate_dist)");
+
+  // SonicMoE distributed: send locally-computed dGate back to source ranks
+  m.def("send_dgate_dist_bf16", [](uintptr_t row_id_ptr, uintptr_t dGate_sorted_ptr,
+                                   uintptr_t dGates_tk_ptr,
+                                   int M, int T, int K,
+                                   py::object stream) {
+    rdep_send_dgate_dist_bf16(
+        reinterpret_cast<const int64_t*>(row_id_ptr),
+        reinterpret_cast<const float*>(dGate_sorted_ptr),
+        reinterpret_cast<float*>(dGates_tk_ptr),
+        M, T, K,
+        to_stream(stream));
+  }, py::arg("row_id"), py::arg("dGate_sorted"), py::arg("dGates_tk"),
+     py::arg("M"), py::arg("T"), py::arg("K"),
+     py::arg("stream") = py::none(),
+     "SonicMoE distributed: send dGate to source ranks via IPC");
 
   m.def("scatter_dx_bf16_internal", [](uintptr_t dXe_pad_ptr, uintptr_t row_id_ptr,
                                       uintptr_t dX_out_ptr,
@@ -444,6 +554,52 @@ PYBIND11_MODULE(rdep, m) {
     rdep_alloc_blockscaled(capacity, H, n_local, profile);
   }, py::arg("capacity"), py::arg("H"), py::arg("n_local"), py::arg("profile"),
      "Allocate blockscaled dispatch buffers (profile: 0=fp8, 1=nvfp4)");
+
+  m.def("dispatch_meta_blockscaled", [](uintptr_t x_ptr, uintptr_t eids_ptr, uintptr_t gates_ptr,
+                                       int T, int K,
+                                       uintptr_t offs_pad_ptr, uintptr_t M_pad_ptr,
+                                       py::object stream) {
+    return rdep_dispatch_meta_blockscaled(
+        reinterpret_cast<const void*>(x_ptr),
+        reinterpret_cast<const int*>(eids_ptr),
+        reinterpret_cast<const float*>(gates_ptr),
+        T, K,
+        reinterpret_cast<int*>(offs_pad_ptr),
+        reinterpret_cast<int*>(M_pad_ptr),
+        to_stream(stream));
+  }, py::arg("x"), py::arg("eids"), py::arg("gates"),
+     py::arg("T"), py::arg("K"),
+     py::arg("offs_pad"), py::arg("M_pad"),
+     py::arg("stream") = py::none(),
+     "Dispatch blockscaled tokens (meta only): quantized dispatch + sort + padded mapping. "
+     "NOTE: `M_pad` is treated as a pinned host scratch (used to read back M_recv/M_pad).");
+
+  m.def("gather_xe_blockscaled", [](uintptr_t Xe_q_ptr, uintptr_t Xe_sf_ptr,
+                                   int M_recv, int M_pad,
+                                   py::object stream) {
+    rdep_gather_xe_blockscaled(
+        reinterpret_cast<void*>(Xe_q_ptr),
+        reinterpret_cast<void*>(Xe_sf_ptr),
+        M_recv,
+        M_pad,
+        to_stream(stream));
+  }, py::arg("Xe_q_out"), py::arg("Xe_sf_out"),
+     py::arg("M_recv"), py::arg("M_pad"),
+     py::arg("stream") = py::none(),
+     "Gather blockscaled activations into padded expert layout: Xe_q[M_pad,Hp] + Xe_sf[M_pad,Hsf] (packed SF).");
+
+  m.def("return_scatter_from_pad_blockscaled", [](uintptr_t Ye_pad_ptr, uintptr_t out_ptr,
+                                                 int M_recv, int T, int K,
+                                                 py::object stream) {
+    rdep_return_scatter_from_pad_blockscaled(
+        reinterpret_cast<const void*>(Ye_pad_ptr),
+        reinterpret_cast<void*>(out_ptr),
+        M_recv, T, K,
+        to_stream(stream));
+  }, py::arg("Ye_pad"), py::arg("out"),
+     py::arg("M_recv"), py::arg("T"), py::arg("K"),
+     py::arg("stream") = py::none(),
+     "Scatter expert outputs from padded layout Ye_pad[M_pad,H] back to token output (blockscaled path).");
 
   // ========== Expert Optimizer (AdamW + cache emit) ==========
   m.def(
@@ -725,29 +881,29 @@ PYBIND11_MODULE(rdep, m) {
      "Rowwise SF swizzle to MMA layout (A-side)");
 
   // Build grouped GEMM metadata (GPU) for strided grouped interface
-  m.def("build_grouped_gemm_metadata", [](uintptr_t offs_ptr, int E,
-                                          int64_t A_base, int64_t A_row_bytes,
-                                          int64_t B_base, int64_t B_expert_bytes,
-                                          int64_t C_base, int64_t C_row_bytes,
-                                          int64_t SFA_base, int64_t SFA_expert_bytes,
-                                          int64_t SFB_base, int64_t SFB_expert_bytes,
-                                          int32_t A_s0, int32_t A_s1,
-                                          int32_t B_s0, int32_t B_s1,
-                                          int32_t C_s0, int32_t C_s1,
-                                          int32_t N, int32_t K,
-                                          uintptr_t sizes_ptr, uintptr_t strides_ptr,
-                                          uintptr_t ptrs_abc_ptr, uintptr_t ptrs_sfasfb_ptr,
-                                          py::object stream) {
-    auto err = build_grouped_gemm_metadata(
-        reinterpret_cast<const int32_t*>(offs_ptr), E,
-        A_base, A_row_bytes,
-        B_base, B_expert_bytes,
-        C_base, C_row_bytes,
-        SFA_base, SFA_expert_bytes,
-        SFB_base, SFB_expert_bytes,
-        A_s0, A_s1,
-        B_s0, B_s1,
-        C_s0, C_s1,
+	  m.def("build_grouped_gemm_metadata", [](uintptr_t offs_ptr, int E,
+	                                          int64_t A_base, int64_t A_row_bytes,
+	                                          int64_t B_base, int64_t B_expert_bytes,
+	                                          int64_t C_base, int64_t C_row_bytes,
+	                                          int64_t SFA_base, int64_t SFA_row_bytes,
+	                                          int64_t SFB_base, int64_t SFB_expert_bytes,
+	                                          int32_t A_s0, int32_t A_s1,
+	                                          int32_t B_s0, int32_t B_s1,
+	                                          int32_t C_s0, int32_t C_s1,
+	                                          int32_t N, int32_t K,
+	                                          uintptr_t sizes_ptr, uintptr_t strides_ptr,
+	                                          uintptr_t ptrs_abc_ptr, uintptr_t ptrs_sfasfb_ptr,
+	                                          py::object stream) {
+	    auto err = build_grouped_gemm_metadata(
+	        reinterpret_cast<const int32_t*>(offs_ptr), E,
+	        A_base, A_row_bytes,
+	        B_base, B_expert_bytes,
+	        C_base, C_row_bytes,
+	        SFA_base, SFA_row_bytes,
+	        SFB_base, SFB_expert_bytes,
+	        A_s0, A_s1,
+	        B_s0, B_s1,
+	        C_s0, C_s1,
         N, K,
         reinterpret_cast<int32_t*>(sizes_ptr),
         reinterpret_cast<int32_t*>(strides_ptr),
@@ -755,15 +911,15 @@ PYBIND11_MODULE(rdep, m) {
         reinterpret_cast<int64_t*>(ptrs_sfasfb_ptr),
         to_stream(stream));
     if (err != cudaSuccess) throw std::runtime_error("build_grouped_gemm_metadata failed");
-  }, py::arg("offs"), py::arg("E"),
-     py::arg("A_base"), py::arg("A_row_bytes"),
-     py::arg("B_base"), py::arg("B_expert_bytes"),
-     py::arg("C_base"), py::arg("C_row_bytes"),
-     py::arg("SFA_base"), py::arg("SFA_expert_bytes"),
-     py::arg("SFB_base"), py::arg("SFB_expert_bytes"),
-     py::arg("A_s0"), py::arg("A_s1"),
-     py::arg("B_s0"), py::arg("B_s1"),
-     py::arg("C_s0"), py::arg("C_s1"),
+	  }, py::arg("offs"), py::arg("E"),
+	     py::arg("A_base"), py::arg("A_row_bytes"),
+	     py::arg("B_base"), py::arg("B_expert_bytes"),
+	     py::arg("C_base"), py::arg("C_row_bytes"),
+	     py::arg("SFA_base"), py::arg("SFA_row_bytes"),
+	     py::arg("SFB_base"), py::arg("SFB_expert_bytes"),
+	     py::arg("A_s0"), py::arg("A_s1"),
+	     py::arg("B_s0"), py::arg("B_s1"),
+	     py::arg("C_s0"), py::arg("C_s1"),
      py::arg("N"), py::arg("K"),
      py::arg("sizes_mnkl"), py::arg("strides_abc"),
      py::arg("ptrs_abc"), py::arg("ptrs_sfasfb"),

@@ -48,6 +48,13 @@ extern "C" cudaError_t swizzle_sf_strided(
     int E, int sf_k, int sf_k_pad, int M_pad, int M_e_swizzle,
     cudaStream_t stream);
 
+// Forward declaration for swizzle_sf_mkl_to_mma (defined in quant.cu)
+extern "C" cudaError_t swizzle_sf_mkl_to_mma(
+    const void* sf_mkl,
+    void* sf_mma,
+    int M, int sf_k,
+    cudaStream_t stream);
+
 // NVSHMEM error checking macro
 #define NVSHMEM_CHECK(call)                                                   \
     do {                                                                      \
@@ -308,7 +315,6 @@ void finalize() {
     if (g_nvshmem.M_pad_dev) cudaFree(g_nvshmem.M_pad_dev);
     if (g_nvshmem.meta_copy) cudaFree(g_nvshmem.meta_copy);
     if (g_nvshmem.sfa_gather_tmp) cudaFree(g_nvshmem.sfa_gather_tmp);
-    if (g_nvshmem.offs_with0) cudaFree(g_nvshmem.offs_with0);
     if (g_nvshmem.sort_temp) cudaFree(g_nvshmem.sort_temp);
     if (g_nvshmem.d_ipc_buffer_ptrs) cudaFree(g_nvshmem.d_ipc_buffer_ptrs);
     if (g_nvshmem.d_ipc_barrier_signal_ptrs) cudaFree(g_nvshmem.d_ipc_barrier_signal_ptrs);
@@ -739,7 +745,6 @@ void alloc_blockscaled(size_t capacity, int H, int n_local, int profile) {
     if (g_nvshmem.M_pad_dev) cudaFree(g_nvshmem.M_pad_dev);
     if (g_nvshmem.meta_copy) cudaFree(g_nvshmem.meta_copy);
     if (g_nvshmem.sfa_gather_tmp) cudaFree(g_nvshmem.sfa_gather_tmp);
-    if (g_nvshmem.offs_with0) cudaFree(g_nvshmem.offs_with0);
     if (g_nvshmem.sort_temp) cudaFree(g_nvshmem.sort_temp);
 
     CUDA_CHECK(cudaMalloc(&g_nvshmem.local_eid, capacity * sizeof(int)));
@@ -749,8 +754,6 @@ void alloc_blockscaled(size_t capacity, int H, int n_local, int profile) {
     CUDA_CHECK(cudaMalloc(&g_nvshmem.M_pad_dev, sizeof(int)));
     CUDA_CHECK(cudaMalloc(&g_nvshmem.meta_copy, capacity * sizeof(Meta)));
     CUDA_CHECK(cudaMalloc(&g_nvshmem.sfa_gather_tmp, max_pad * static_cast<size_t>(Hsf) * sizeof(uint8_t)));
-    CUDA_CHECK(cudaMalloc(&g_nvshmem.offs_with0, (n_local + 1) * sizeof(int)));
-    g_nvshmem.M_e_swizzle_cap = ((static_cast<int>(capacity) + 127) / 128) * 128;
 
     g_nvshmem.sort_temp = nullptr;
     g_nvshmem.sort_temp_bytes = 0;
@@ -1731,37 +1734,37 @@ int dispatch_hybrid_blockscaled(
     cudaStreamSynchronize(stream);
     int M_pad = *M_pad_out;
 
-    // Zero output buffer
-    cudaMemsetAsync(Xe_q_out, 0, (size_t)M_pad * g_nvshmem.Hp * sizeof(uint16_t), stream);
-    // Ensure padding rows have deterministic, safe SF (scale=1.0 -> e8m0 byte 127).
-    cudaMemsetAsync(g_nvshmem.sfa_gather_tmp, 127, (size_t)M_pad * g_nvshmem.Hsf * sizeof(uint8_t), stream);
+    // Optional output materialization: meta-only mode passes Xe_q_out/Xe_sf_out as nullptr.
+    if (Xe_q_out && Xe_sf_out) {
+        // Zero output buffer
+        cudaMemsetAsync(Xe_q_out, 0, (size_t)M_pad * g_nvshmem.Hp * sizeof(uint16_t), stream);
+        // Ensure padding rows have deterministic, safe SF (scale=1.0 -> e8m0 byte 127).
+        cudaMemsetAsync(g_nvshmem.sfa_gather_tmp, 127, (size_t)M_pad * g_nvshmem.Hsf * sizeof(uint8_t), stream);
 
-    // Gather packed activations to Xe_q_out and rowwise SFA to a temporary buffer
-    int gather_threads = 256;
-    int gather_blocks = std::max(1, (M_recv * 32 + gather_threads - 1) / gather_threads);
-    k_gather_blockscaled_hybrid<<<gather_blocks, gather_threads, 0, stream>>>(
-        x_buf, sfa_buf, g_nvshmem.order, g_nvshmem.dest,
-        static_cast<uint16_t*>(Xe_q_out), g_nvshmem.sfa_gather_tmp,
-        M_recv, g_nvshmem.Hp, g_nvshmem.Hsf);
+        // Gather packed activations to Xe_q_out and rowwise SFA to a temporary buffer
+        int gather_threads = 256;
+        int gather_blocks = std::max(1, (M_recv * 32 + gather_threads - 1) / gather_threads);
+        k_gather_blockscaled_hybrid<<<gather_blocks, gather_threads, 0, stream>>>(
+            x_buf, sfa_buf, g_nvshmem.order, g_nvshmem.dest,
+            static_cast<uint16_t*>(Xe_q_out), g_nvshmem.sfa_gather_tmp,
+            M_recv, g_nvshmem.Hp, g_nvshmem.Hsf);
 
-    // Build offsets with leading 0 into device buffer
-    cudaMemsetAsync(g_nvshmem.offs_with0, 0, sizeof(int), stream);
-    cudaMemcpyAsync(g_nvshmem.offs_with0 + 1, offs_pad_out,
-                    g_nvshmem.n_local * sizeof(int), cudaMemcpyDeviceToDevice, stream);
-
-    int sf_k = g_nvshmem.Hsf;
-    int sf_k_pad = ((sf_k + 3) / 4) * 4;
-    int M_e_swizzle = g_nvshmem.M_e_swizzle_cap;
-
-    cudaError_t err = swizzle_sf_strided(
-        static_cast<const void*>(g_nvshmem.sfa_gather_tmp),
-        Xe_sf_out,
-        reinterpret_cast<const int32_t*>(g_nvshmem.offs_with0),
-        g_nvshmem.n_local, sf_k, sf_k_pad, M_pad, M_e_swizzle,
-        stream);
-    if (err != cudaSuccess) {
-        fprintf(stderr, "RDEP ERROR: swizzle_sf_strided failed: %s\n", cudaGetErrorString(err));
-        return -3;
+        const int sf_k = g_nvshmem.Hsf;
+        if ((sf_k & 3) != 0) {
+            fprintf(stderr, "RDEP ERROR: H=%d requires sf_k=H/32 multiple of 4 (H%%128==0). Got sf_k=%d\n",
+                    g_nvshmem.H, sf_k);
+            return -3;
+        }
+        cudaError_t err = swizzle_sf_mkl_to_mma(
+            static_cast<const void*>(g_nvshmem.sfa_gather_tmp),
+            Xe_sf_out,
+            M_pad,
+            sf_k,
+            stream);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "RDEP ERROR: swizzle_sf_mkl_to_mma failed: %s\n", cudaGetErrorString(err));
+            return -4;
+        }
     }
 
     if (row_id_out && gate_out) {
@@ -1771,6 +1774,56 @@ int dispatch_hybrid_blockscaled(
     }
 
     return M_recv;
+}
+
+void gather_xe_hybrid_blockscaled(
+    void* Xe_q_out,
+    void* Xe_sf_out,
+    int M_recv,
+    int M_pad,
+    cudaStream_t stream)
+{
+    if (!g_nvshmem.initialized) return;
+    if (g_nvshmem.profile < 0) {
+        fprintf(stderr, "RDEP ERROR: gather_xe_hybrid_blockscaled requires blockscaled NVSHMEM state\n");
+        return;
+    }
+    if (!Xe_q_out || !Xe_sf_out) {
+        fprintf(stderr, "RDEP ERROR: gather_xe_hybrid_blockscaled requires non-null outputs\n");
+        return;
+    }
+    if (M_recv <= 0 || M_pad <= 0) return;
+
+    char* local_ipc_buf = static_cast<char*>(g_nvshmem.ipc_buffer_ptrs[g_nvshmem.nvl_rank]);
+    uint16_t* x_buf = reinterpret_cast<uint16_t*>(local_ipc_buf + g_nvshmem.ipc_x_off);
+    uint8_t* sfa_buf = reinterpret_cast<uint8_t*>(local_ipc_buf + g_nvshmem.ipc_sfa_off);
+
+    cudaMemsetAsync(Xe_q_out, 0, (size_t)M_pad * g_nvshmem.Hp * sizeof(uint16_t), stream);
+    cudaMemsetAsync(g_nvshmem.sfa_gather_tmp, 127, (size_t)M_pad * g_nvshmem.Hsf * sizeof(uint8_t), stream);
+
+    int threads = 256;
+    int blocks = std::max(1, (M_recv * 32 + threads - 1) / threads);
+    k_gather_blockscaled_hybrid<<<blocks, threads, 0, stream>>>(
+        x_buf, sfa_buf, g_nvshmem.order, g_nvshmem.dest,
+        static_cast<uint16_t*>(Xe_q_out), g_nvshmem.sfa_gather_tmp,
+        M_recv, g_nvshmem.Hp, g_nvshmem.Hsf);
+
+    const int sf_k = g_nvshmem.Hsf;
+    if ((sf_k & 3) != 0) {
+        fprintf(stderr, "RDEP ERROR: H=%d requires sf_k=H/32 multiple of 4 (H%%128==0). Got sf_k=%d\n",
+                g_nvshmem.H, sf_k);
+        return;
+    }
+    cudaError_t err = swizzle_sf_mkl_to_mma(
+        static_cast<const void*>(g_nvshmem.sfa_gather_tmp),
+        Xe_sf_out,
+        M_pad,
+        sf_k,
+        stream);
+    if (err != cudaSuccess) {
+        fprintf(stderr, "RDEP ERROR: swizzle_sf_mkl_to_mma failed: %s\n", cudaGetErrorString(err));
+        return;
+    }
 }
 
 // ============================================================================
@@ -1888,6 +1941,123 @@ __global__ void k_return_scatter_hybrid_bf16(
                 if (h + 4 <= H) {
                     int2* d = reinterpret_cast<int2*>(dst + h);
                     int2 v = *reinterpret_cast<const int2*>(y_row + h);
+                    st_na_v2_s32(d, v);
+                } else {
+                    for (int hh = h; hh < H && hh < h + 4; hh++) {
+                        st_na_relaxed_gpu_b16(dst + hh, reinterpret_cast<const uint16_t*>(y_row)[hh]);
+                    }
+                }
+            }
+        }
+    }
+}
+
+__global__ void k_return_scatter_hybrid_bf16_from_pad(
+    const __nv_bfloat16* __restrict__ Ye_pad, // [M_pad, H] expert outputs (padded)
+    const int* __restrict__ dest,             // [M_recv] sorted_i -> pad_i
+    const int* __restrict__ order,            // [M_recv] original indices
+    const Meta* __restrict__ meta,            // [capacity] metadata from dispatch
+    float* __restrict__ out,                  // [T, H] local output accumulator
+    int M_recv, int H, int Ha, int T, int K,
+    const int my_rank, const int local_world, const int num_nodes, const int rdma_rank, const int nvl_rank,
+    int capacity,
+    // NVSHMEM buffers (for inter-node return)
+    uint16_t* nvshmem_y_buf,
+    Meta* nvshmem_meta,
+    int* nvshmem_counter,
+    // IPC buffers (for intra-node return)
+    void** ipc_buffer_ptrs,
+    size_t ipc_y_off,
+    size_t ipc_meta_off,
+    size_t ipc_counter_off)
+{
+    (void)num_nodes;
+    int warp_id = (blockIdx.x * blockDim.x + threadIdx.x) / 32;
+    int lane = threadIdx.x % 32;
+    int num_warps = (gridDim.x * blockDim.x) / 32;
+
+    for (int sorted_i = warp_id; sorted_i < M_recv; sorted_i += num_warps) {
+        const int pad_i = dest[sorted_i];
+        if (pad_i < 0) continue;
+
+        int orig_i = order[sorted_i];
+        static_assert(sizeof(Meta) == sizeof(int4), "Meta must be 16B");
+        union MetaVec {
+            Meta m;
+            int4 v;
+        };
+        MetaVec mv;
+        mv.v = ld_nc_v4_s32(reinterpret_cast<const int4*>(meta + orig_i));
+        const Meta m = mv.m;
+
+        int src_rank, tok, slot;
+        decode_rid(m.row_id, T, K, &src_rank, &tok, &slot);
+
+        int src_rdma_rank = src_rank / local_world;
+        int src_nvl_rank = src_rank % local_world;
+        bool is_remote_node = (src_rdma_rank != rdma_rank);
+        bool is_local = (src_rank == my_rank);
+
+        const __nv_bfloat16* y_row = Ye_pad + (int64_t)pad_i * H;
+
+        if (is_local) {
+            float* out_row = out + (int64_t)tok * H;
+            for (int h = lane; h < H; h += 32) {
+                atomicAdd(out_row + h, __bfloat162float(y_row[h]) * m.gate);
+            }
+        } else if (is_remote_node) {
+            const int proxy_pe = src_rdma_rank * local_world + nvl_rank;
+            int slot_r;
+            if (lane == 0) {
+                slot_r = nvshmem_int_atomic_fetch_add(nvshmem_counter, 1, proxy_pe);
+            }
+            slot_r = __shfl_sync(0xFFFFFFFF, slot_r, 0);
+
+            if (slot_r >= capacity) continue;
+
+            if (lane == 0) {
+                const int local_eid_packed = meta_pack_local_eid_dest_nvl(/*local_eid=*/0, src_nvl_rank);
+                nvshmem_meta_p(nvshmem_meta + slot_r, proxy_pe, m.row_id, local_eid_packed, m.gate);
+            }
+
+            uint16_t* dst = nvshmem_y_buf + (int64_t)slot_r * Ha;
+            for (int h = lane * 4; h < H; h += 32 * 4) {
+                if (h + 4 <= H) {
+                    nvshmem_put64_nbi(reinterpret_cast<uint64_t*>(dst + h),
+                                      reinterpret_cast<const uint64_t*>(y_row + h),
+                                      1, proxy_pe);
+                } else {
+                    for (int hh = h; hh < H && hh < h + 4; hh++) {
+                        nvshmem_put16_nbi(dst + hh, reinterpret_cast<const uint16_t*>(y_row) + hh, 1, proxy_pe);
+                    }
+                }
+            }
+        } else {
+            char* dest_buf = static_cast<char*>(ipc_buffer_ptrs[src_nvl_rank]);
+            uint16_t* y_buf = reinterpret_cast<uint16_t*>(dest_buf + ipc_y_off);
+            Meta* meta_buf = reinterpret_cast<Meta*>(dest_buf + ipc_meta_off);
+            int* counter = reinterpret_cast<int*>(dest_buf + ipc_counter_off);
+
+            int slot_r;
+            if (lane == 0) {
+                slot_r = atomicAdd(counter, 1);
+            }
+            slot_r = __shfl_sync(0xFFFFFFFF, slot_r, 0);
+
+            if (slot_r >= capacity) continue;
+
+            if (lane == 0) {
+                Meta mr{m.row_id, 0, m.gate};
+                int4* meta_dst = reinterpret_cast<int4*>(&meta_buf[slot_r]);
+                int4 meta_val = *reinterpret_cast<const int4*>(&mr);
+                st_na_v4_s32(meta_dst, meta_val);
+            }
+
+            uint16_t* dst = y_buf + (int64_t)slot_r * Ha;
+            for (int h = lane * 4; h < H; h += 32 * 4) {
+                if (h + 4 <= H) {
+                    int2 v = *reinterpret_cast<const int2*>(y_row + h);
+                    int2* d = reinterpret_cast<int2*>(dst + h);
                     st_na_v2_s32(d, v);
                 } else {
                     for (int hh = h; hh < H && hh < h + 4; hh++) {
@@ -2138,6 +2308,107 @@ static void return_scatter_hybrid_impl(
 	    }
 }
 
+static void return_scatter_hybrid_from_pad_impl(
+    const __nv_bfloat16* Ye_pad,
+    float* out,
+    int M_recv, int T, int K,
+    void** ipc_buffer_ptrs,
+    size_t ipc_y_off,
+    size_t ipc_meta_off,
+    size_t ipc_counter_off,
+    uint16_t* nvshmem_y_buf,
+    int H, int Ha,
+    cudaStream_t stream)
+{
+    if (!g_nvshmem.initialized) return;
+
+    if (!g_nvshmem.d_ipc_buffer_ptrs || !g_nvshmem.d_ipc_barrier_signal_ptrs) {
+        fprintf(stderr, "RDEP ERROR: hybrid return_scatter requires synced IPC pointers\n");
+        return;
+    }
+
+    int capacity = static_cast<int>(g_nvshmem.capacity);
+
+    reset_counters(stream);
+
+    char* local_ipc_buf = static_cast<char*>(ipc_buffer_ptrs[g_nvshmem.nvl_rank]);
+    int* local_counter = reinterpret_cast<int*>(local_ipc_buf + ipc_counter_off);
+    cudaMemsetAsync(local_counter, 0, sizeof(int), stream);
+
+    Meta* local_meta = reinterpret_cast<Meta*>(local_ipc_buf + ipc_meta_off);
+    if (M_recv > 0) {
+        cudaMemcpyAsync(g_nvshmem.meta_copy, local_meta,
+                        static_cast<size_t>(M_recv) * sizeof(Meta),
+                        cudaMemcpyDeviceToDevice, stream);
+    }
+
+    int threads = 256;
+    int warps_needed = std::max(M_recv, 1);
+    int blocks = std::max(1, (warps_needed * 32 + threads - 1) / threads);
+
+    hybrid_barrier_on_stream(stream);
+
+    if (M_recv > 0) {
+        k_return_scatter_hybrid_bf16_from_pad<<<blocks, threads, 0, stream>>>(
+            Ye_pad,
+            g_nvshmem.dest,
+            g_nvshmem.order,
+            g_nvshmem.meta_copy,
+            out,
+            M_recv, H, Ha, T, K,
+            g_nvshmem.rank, g_nvshmem.local_world, g_nvshmem.num_nodes,
+            g_nvshmem.rdma_rank, g_nvshmem.nvl_rank,
+            capacity,
+            nvshmem_y_buf,
+            static_cast<Meta*>(g_nvshmem.meta),
+            g_nvshmem.counter,
+            g_nvshmem.d_ipc_buffer_ptrs,
+            ipc_y_off,
+            ipc_meta_off,
+            ipc_counter_off);
+    }
+
+    nvshmemx_quiet_on_stream(stream);
+    hybrid_barrier_on_stream(stream);
+
+    int nvshmem_ret = 0;
+    cudaMemcpy(&nvshmem_ret, g_nvshmem.counter, sizeof(int), cudaMemcpyDeviceToHost);
+    nvshmem_ret = std::min(nvshmem_ret, capacity);
+    if (nvshmem_ret > 0) {
+        int f_threads = 256;
+        int f_blocks = std::max(1, (nvshmem_ret * 32 + f_threads - 1) / f_threads);
+        k_forward_nvshmem_return_to_ipc_bf16<<<f_blocks, f_threads, 0, stream>>>(
+            nvshmem_y_buf,
+            static_cast<const Meta*>(g_nvshmem.meta),
+            nvshmem_ret,
+            H, Ha,
+            capacity,
+            g_nvshmem.nvl_rank,
+            g_nvshmem.local_world,
+            g_nvshmem.d_ipc_buffer_ptrs,
+            ipc_y_off,
+            ipc_meta_off,
+            ipc_counter_off);
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    ipc_barrier_on_stream(stream);
+
+    int ipc_ret = 0;
+    cudaMemcpy(&ipc_ret, local_counter, sizeof(int), cudaMemcpyDeviceToHost);
+
+    if (ipc_ret > 0) {
+        ipc_ret = std::min(ipc_ret, capacity);
+        uint16_t* ipc_y_buf = reinterpret_cast<uint16_t*>(local_ipc_buf + ipc_y_off);
+        Meta* ipc_meta_buf = reinterpret_cast<Meta*>(local_ipc_buf + ipc_meta_off);
+
+        int scatter_blocks = std::max(1, (ipc_ret * 32 + 255) / 256);
+        k_scatter_received_hybrid_bf16<<<scatter_blocks, 256, 0, stream>>>(
+            ipc_y_buf, ipc_meta_buf, out,
+            ipc_ret, H, Ha, T, K);
+    }
+}
+
 void return_scatter_hybrid_bf16(
     const __nv_bfloat16* Ye,
     float* out,
@@ -2161,6 +2432,29 @@ void return_scatter_hybrid_bf16(
         stream);
 }
 
+void return_scatter_hybrid_bf16_from_pad(
+    const __nv_bfloat16* Ye_pad,
+    float* out,
+    int M_recv, int T, int K,
+    void** ipc_buffer_ptrs,
+    int** ipc_barrier_ptrs,
+    cudaStream_t stream)
+{
+    (void)ipc_barrier_ptrs;
+    return_scatter_hybrid_from_pad_impl(
+        Ye_pad,
+        out,
+        M_recv, T, K,
+        ipc_buffer_ptrs,
+        /*ipc_y_off=*/0,
+        g_nvshmem.ipc_meta_off,
+        g_nvshmem.ipc_counter_off,
+        g_nvshmem.x_buf_bf16,
+        g_nvshmem.H,
+        g_nvshmem.Ha,
+        stream);
+}
+
 // ============================================================================
 // Host API: Hybrid Return Scatter (Blockscaled)
 // ============================================================================
@@ -2176,6 +2470,29 @@ void return_scatter_hybrid_blockscaled(
     (void)ipc_barrier_ptrs;
     return_scatter_hybrid_impl(
         Ye,
+        out,
+        M_recv, T, K,
+        ipc_buffer_ptrs,
+        g_nvshmem.ipc_y_off,
+        g_nvshmem.ipc_meta_off,
+        g_nvshmem.ipc_counter_off,
+        g_nvshmem.y_buf,
+        g_nvshmem.H,
+        g_nvshmem.Ha,
+        stream);
+}
+
+void return_scatter_hybrid_blockscaled_from_pad(
+    const __nv_bfloat16* Ye_pad,
+    float* out,
+    int M_recv, int T, int K,
+    void** ipc_buffer_ptrs,
+    int** ipc_barrier_ptrs,
+    cudaStream_t stream)
+{
+    (void)ipc_barrier_ptrs;
+    return_scatter_hybrid_from_pad_impl(
+        Ye_pad,
         out,
         M_recv, T, K,
         ipc_buffer_ptrs,
@@ -2271,7 +2588,8 @@ __global__ void k_stage_dy_push_hybrid(
 }
 
 __global__ void k_gather_dy_from_stage_and_send_gate_hybrid(
-    const __nv_bfloat16* __restrict__ Ye_sorted,   // [M, H]
+    const __nv_bfloat16* __restrict__ Ye_pad,      // [M_pad, H]
+    const int* __restrict__ dest,                  // [M] sorted_i -> pad_i
     const int64_t* __restrict__ row_id,            // [M]
     const float* __restrict__ gate_sorted,         // [M]
     const uint16_t* __restrict__ stage_ipc,        // [capacity, stage_stride]
@@ -2303,7 +2621,9 @@ __global__ void k_gather_dy_from_stage_and_send_gate_hybrid(
         const bool src_same_node = (src_rdma == rdma_rank);
 
         const uint16_t* dy_u16 = (src_same_node ? stage_ipc : stage_nv) + rid * static_cast<int64_t>(stage_stride);
-        const uint16_t* ye_u16 = reinterpret_cast<const uint16_t*>(Ye_sorted + (int64_t)i * H);
+        const int pad_i = dest[i];
+        if (pad_i < 0) continue;
+        const uint16_t* ye_u16 = reinterpret_cast<const uint16_t*>(Ye_pad + (int64_t)pad_i * H);
         __nv_bfloat16* dye_row = dYe_out + (int64_t)i * H;
 
         const float g = gate_sorted[i];
@@ -2379,7 +2699,7 @@ __global__ void k_collect_tok_gate_hybrid(
 void gather_dy_hybrid_bf16(
     const __nv_bfloat16* dY_local,
     const int* eids,
-    const __nv_bfloat16* Ye_sorted,
+    const __nv_bfloat16* Ye_pad,
     const int64_t* row_id,
     const float* gate_sorted,
     __nv_bfloat16* dYe_out,
@@ -2447,7 +2767,8 @@ void gather_dy_hybrid_bf16(
 	    const int g_threads = 256;
 	    const int g_blocks = std::max(1, (M * 32 + g_threads - 1) / g_threads);
     k_gather_dy_from_stage_and_send_gate_hybrid<<<g_blocks, g_threads, 0, stream>>>(
-        Ye_sorted,
+        Ye_pad,
+        g_nvshmem.dest,
         row_id,
         gate_sorted,
         stage_ipc,
