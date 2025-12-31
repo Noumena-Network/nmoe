@@ -357,7 +357,7 @@ def load_toml(path: Union[str, Path]) -> dict:
     """Load TOML config with env var expansion.
 
     Supports ${VAR} and ${VAR:-default} syntax.
-    Only NMOE_, HYDRA_, and HF_ prefixed vars are allowed.
+    Only NMOE_ and HYDRA_ prefixed vars are allowed.
 
     Args:
         path: Path to TOML file
