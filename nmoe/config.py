@@ -267,3 +267,110 @@ class Config:
 #
 # Optional:
 #   dtype                 - 'bf16', 'fp8', or 'nvfp4' (default: 'bf16')
+
+
+# =============================================================================
+# TOML Config Loading with Environment Variable Expansion
+# =============================================================================
+
+import os
+import re
+import tomllib
+from pathlib import Path
+from typing import Union
+
+# Allowlisted env var prefixes (security: prevent accidental secret leakage)
+_ENV_VAR_PREFIXES = ("NMOE_", "HYDRA_", "HF_")
+
+
+class ConfigEnvError(Exception):
+    """Raised when env var expansion fails."""
+    pass
+
+
+def _expand_env_vars(obj: any, source: str = "<config>") -> any:
+    """Recursively expand ${VAR} and ${VAR:-default} in strings.
+
+    Args:
+        obj: Config object (dict, list, or scalar)
+        source: Source file path for error messages
+
+    Returns:
+        Object with env vars expanded
+
+    Raises:
+        ConfigEnvError: If env var is not in allowlist or unresolved
+    """
+    if isinstance(obj, str):
+        def replace(m: re.Match) -> str:
+            var = m.group(1)
+            default = m.group(3)  # None if no default
+
+            # Security: only allow specific prefixes
+            if not any(var.startswith(p) for p in _ENV_VAR_PREFIXES):
+                raise ConfigEnvError(
+                    f"Env var ${{{var}}} in {source} not allowed. "
+                    f"Only prefixes {_ENV_VAR_PREFIXES} are permitted."
+                )
+
+            value = os.environ.get(var)
+            if value is not None:
+                return value
+            if default is not None:
+                return default
+            raise ConfigEnvError(
+                f"Unresolved env var ${{{var}}} in {source}. "
+                f"Set {var} or provide default: ${{{var}:-/default/path}}"
+            )
+
+        return re.sub(r'\$\{([A-Z_][A-Z0-9_]*)(:-([^}]*))?\}', replace, obj)
+
+    elif isinstance(obj, dict):
+        return {k: _expand_env_vars(v, source) for k, v in obj.items()}
+
+    elif isinstance(obj, list):
+        return [_expand_env_vars(v, source) for v in obj]
+
+    return obj
+
+
+def _check_unresolved(obj: any, source: str = "<config>") -> None:
+    """Fail-fast if any ${...} patterns remain after expansion."""
+    if isinstance(obj, str):
+        if "${" in obj:
+            match = re.search(r'\$\{[^}]+\}', obj)
+            if match:
+                raise ConfigEnvError(
+                    f"Unresolved placeholder {match.group(0)} in {source}. "
+                    f"This may indicate a malformed env var reference."
+                )
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            _check_unresolved(v, source)
+    elif isinstance(obj, list):
+        for v in obj:
+            _check_unresolved(v, source)
+
+
+def load_toml(path: Union[str, Path]) -> dict:
+    """Load TOML config with env var expansion.
+
+    Supports ${VAR} and ${VAR:-default} syntax.
+    Only NMOE_, HYDRA_, and HF_ prefixed vars are allowed.
+
+    Args:
+        path: Path to TOML file
+
+    Returns:
+        Parsed and expanded config dict
+
+    Raises:
+        ConfigEnvError: If env var not allowed or unresolved
+    """
+    path = Path(path)
+    with open(path, "rb") as f:
+        obj = tomllib.load(f)
+
+    obj = _expand_env_vars(obj, str(path))
+    _check_unresolved(obj, str(path))
+    return obj

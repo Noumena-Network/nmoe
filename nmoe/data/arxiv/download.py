@@ -287,14 +287,12 @@ def download_ar5iv_dataset(
             logger.info(f"ar5iv dataset downloaded to {output_dir}")
             return output_dir
 
-    # Fallback: Direct download from KWARC
-    # This would need the actual download URLs
-    logger.warning(
-        "ar5iv direct download not implemented. "
-        "Please download manually from: https://sigmathling.kwarc.info/resources/ar5iv-dataset-2024/"
+    # Fallback: No automatic download available
+    raise RuntimeError(
+        "ar5iv automatic download requires HuggingFace CLI (uvx). "
+        "Manual download: https://sigmathling.kwarc.info/resources/ar5iv-dataset-2024/ "
+        f"then extract to {output_dir}"
     )
-
-    return output_dir
 
 
 def estimate_download_cost(

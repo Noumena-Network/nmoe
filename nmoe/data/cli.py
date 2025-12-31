@@ -32,6 +32,8 @@ from glob import glob
 from pathlib import Path
 from typing import List, Any, Dict
 
+from nmoe.config import load_toml
+
 # arXiv processing (lazy import to avoid dependency issues)
 def _get_arxiv():
     from .arxiv import (
@@ -51,9 +53,7 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 def _read_toml(path: Path) -> Dict[str, Any]:
-    import tomllib
-    with path.open("rb") as f:
-        obj = tomllib.load(f)
+    obj = load_toml(path)
     if not isinstance(obj, dict):
         raise ValueError("invalid TOML root (expected table)")
     return obj

@@ -22,11 +22,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict
 
+from nmoe.config import load_toml
+
 
 def _read_toml(path: Path) -> Dict[str, Any]:
-    import tomllib
-    with path.open("rb") as f:
-        obj = tomllib.load(f)
+    obj = load_toml(path)
     if not isinstance(obj, dict):
         raise ValueError("invalid TOML root (expected table)")
     return obj

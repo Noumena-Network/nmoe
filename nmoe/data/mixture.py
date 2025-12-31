@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import glob
+
+from nmoe.config import load_toml
 
 
 FP_SCALE = 1_000_000  # fixed-point scale for SWRR weights
@@ -99,8 +100,7 @@ class MixturePlan:
 
 
 def _read_toml(path: Path) -> Dict:
-    with path.open("rb") as f:
-        return tomllib.load(f)
+    return load_toml(path)
 
 
 def _largest_remainder_quota(tokens_target: int, seq_len: int, weights: List[float]) -> List[int]:
