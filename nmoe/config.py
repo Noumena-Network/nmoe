@@ -277,10 +277,11 @@ import os
 import re
 import tomllib
 from pathlib import Path
-from typing import Union
+from typing import Any, Union
 
 # Allowlisted env var prefixes (security: prevent accidental secret leakage)
-_ENV_VAR_PREFIXES = ("NMOE_", "HYDRA_", "HF_")
+# NOTE: HF_ intentionally excluded (HF_TOKEN is sensitive)
+_ENV_VAR_PREFIXES = ("NMOE_", "HYDRA_")
 
 
 class ConfigEnvError(Exception):
@@ -288,7 +289,7 @@ class ConfigEnvError(Exception):
     pass
 
 
-def _expand_env_vars(obj: any, source: str = "<config>") -> any:
+def _expand_env_vars(obj: Any, source: str = "<config>") -> Any:
     """Recursively expand ${VAR} and ${VAR:-default} in strings.
 
     Args:
@@ -334,7 +335,7 @@ def _expand_env_vars(obj: any, source: str = "<config>") -> any:
     return obj
 
 
-def _check_unresolved(obj: any, source: str = "<config>") -> None:
+def _check_unresolved(obj: Any, source: str = "<config>") -> None:
     """Fail-fast if any ${...} patterns remain after expansion."""
     if isinstance(obj, str):
         if "${" in obj:

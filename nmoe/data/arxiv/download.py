@@ -243,55 +243,14 @@ def download_ar5iv_dataset(
         The ar5iv dataset may require license agreement.
         Total size: ~236GB compressed for no_problem + warning tiers.
     """
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # ar5iv dataset is distributed as tar.gz bundles per quality level.
-    # Primary: HuggingFace Hub (if available)
-    # Fallback: Manual download with clear instructions
-
-    logger.info(f"Downloading ar5iv dataset to {output_dir}")
-    logger.info(f"Quality levels: {quality_levels}")
-
-    # Check if uvx/hf download is available
-    # The ar5iv dataset is also available on HuggingFace in some forms
-    try:
-        result = subprocess.run(
-            ["uvx", "--from", "huggingface-hub", "hf", "download", "--help"],
-            capture_output=True,
-            timeout=10,
-        )
-        has_hf = result.returncode == 0
-    except Exception:
-        has_hf = False
-
-    if has_hf:
-        # Try HuggingFace download
-        logger.info("Using HuggingFace Hub for ar5iv download")
-
-        # Note: This dataset ID would need to be verified
-        # The ar5iv dataset may be available under different names
-        cmd = [
-            "uvx", "--from", "huggingface-hub", "hf", "download",
-            "SIGMathLing/ar5iv-2024",
-            "--repo-type", "dataset",
-            "--local-dir", str(output_dir),
-        ]
-
-        result = subprocess.run(cmd, capture_output=True, text=True)
-
-        if result.returncode != 0:
-            logger.warning(f"HuggingFace download failed: {result.stderr}")
-            logger.info("Falling back to direct download...")
-        else:
-            logger.info(f"ar5iv dataset downloaded to {output_dir}")
-            return output_dir
-
-    # Fallback: No automatic download available
-    raise RuntimeError(
-        "ar5iv automatic download requires HuggingFace CLI (uvx). "
-        "Manual download: https://sigmathling.kwarc.info/resources/ar5iv-dataset-2024/ "
-        f"then extract to {output_dir}"
+    # ar5iv dataset requires manual download - no verified automatic source.
+    # Total size: ~236GB compressed for no_problem + warning tiers.
+    raise NotImplementedError(
+        "ar5iv dataset requires manual download.\n"
+        "1. Visit: https://sigmathling.kwarc.info/resources/ar5iv-dataset-2024/\n"
+        "2. Download the desired quality tiers (no_problem, warning, error)\n"
+        f"3. Extract to: {output_dir}\n"
+        "4. Re-run with --ar5iv-dir pointing to the extracted directory"
     )
 
 
