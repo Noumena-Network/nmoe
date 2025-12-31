@@ -2470,11 +2470,6 @@ def run_grouped_blockscaled_strided(
         torch_stream,
     )
 
-    # Launch CUTLASS kernel with GPU-built metadata
-    # When fuse_swiglu_quant=True, pass output activation and SF pointers
-    out_act_ptr = out_act.data_ptr() if out_act is not None else 0
-    out_sf_ptr = out_sf_mkl.data_ptr() if out_sf_mkl is not None else 0
-
     # NOTE: CuTeDSL 4.3.4 requires explicit typing for scalar args to avoid
     # pointer truncation/mis-marshalling in the JIT launcher.
     compiled(
