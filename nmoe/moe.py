@@ -471,6 +471,13 @@ class _MoEBlockscaledFused(torch.autograd.Function):
     # This eliminates the expensive Ye_pad recomputation for dGate.
     # A = post-SwiGLU activation, dA' = dYe @ W2.T (ungated gradient)
 
+    # Quantize and run expert forward for Ye recomputation (needed for dGate)
+    pack_factor = 2 if rdep.profile == 'fp8' else 4
+    Hp = H // pack_factor
+    sf_k = H // 32
+    sf_k_pad = ((sf_k + 3) // 4) * 4
+    M_e_stride = ((rdep.capacity + 127) // 128) * 128
+
     Xe_q = torch.empty(int(max_pad), Hp, device=device, dtype=torch.uint16)
     Xe_sf = torch.empty(E, M_e_stride, sf_k_pad, device=device, dtype=torch.uint8)
 
