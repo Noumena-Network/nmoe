@@ -159,6 +159,13 @@ class Config:
   reward_model_path: Optional[str] = None
 
   # =============================================================================
+  # Multi-Token Prediction (optional)
+  # =============================================================================
+  mtp_depth: int = 0  # D=0 disabled, D=1+ enables MTP with D additional predictions
+  mtp_lambda: float = 0.3  # Initial MTP loss weight
+  mtp_lambda_step_tokens: int = 0  # Tokens before lambda steps to 0.1 (0 = no step)
+
+  # =============================================================================
   # Validation (optional)
   # =============================================================================
   validation_enabled: bool = False

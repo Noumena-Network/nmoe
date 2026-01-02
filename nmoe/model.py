@@ -12,6 +12,7 @@ from nmoe.attention.rope import RotaryEmbedding
 from nmoe.rdep import Rdep
 from nmoe.blockscaled.grouped import quantize_weights
 from nmoe.norm import RMSNorm
+from nmoe.mtp import MTP
 
 
 ATTN = {
@@ -223,6 +224,20 @@ class Transformer(nn.Module):
     self.mup_scale_factor = 10.667
     self.logits_scale_factor = 0.125
 
+    # MTP (Multi-Token Prediction) - disabled when mtp_depth=0
+    mtp_depth = getattr(config, 'mtp_depth', 0)
+    if mtp_depth > 0:
+      self.mtp = MTP(
+        config,
+        embedding=self.embedding,
+        lm_head=self.lm_head,
+        mup_scale=self.mup_scale_factor,
+        logits_scale=self.logits_scale_factor,
+        attn_cls_fn=lambda: get_attention(config.attn)(config),
+      )
+    else:
+      self.mtp = None
+
   def init_weights(self):
     nn.init.normal_(self.embedding.weight, mean=0.0, std=0.02)
     for block in self.blocks:
@@ -230,6 +245,8 @@ class Transformer(nn.Module):
     self.norm.weight.data.fill_(1.0)
     final_std = self.config.dim ** -0.5
     nn.init.trunc_normal_(self.lm_head.weight, mean=0.0, std=final_std)
+    if self.mtp is not None:
+      self.mtp.init_weights()
 
   def param_sets(self):
     expert_params: list[torch.nn.Parameter] = []
@@ -244,7 +261,7 @@ class Transformer(nn.Module):
     return expert_params, dense_params
 
   @record_function("transformer")
-  def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+  def forward(self, tokens: torch.Tensor, *, targets: torch.Tensor | None = None) -> torch.Tensor:
     with record_function("embedding"):
       x = self.embedding(tokens) * self.mup_scale_factor
     seqlen = tokens.size(1)
@@ -261,6 +278,15 @@ class Transformer(nn.Module):
         loads = loads / loads.sum(dim=-1, keepdim=True).clamp_min(1.0)
         for m, l in zip(moe_layers, loads):
           m.last_loads = l
+
+    # MTP: compute loss before final norm (uses h0 = x before self.norm)
+    # Note: MTP.forward mutates self.mtp.last_loss as a side effect
+    if self.mtp is not None:
+      if self.training and targets is not None:
+        self.mtp(x, targets, cos, sin)
+      else:
+        self.mtp.last_loss = None  # Clear stale loss when not computing MTP
+
     with record_function("norm_f"):
       x = self.norm(x)
     # Dynamic amax scaling handles range - no clamp needed (TorchTitan/Megatron pattern)
