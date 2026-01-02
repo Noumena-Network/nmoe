@@ -201,16 +201,26 @@ def main():
 
   # Apply CLI overrides (--key=value)
   for arg in sys.argv[2:]:
-    if arg.startswith('--') and '=' in arg:
-      key, val = arg[2:].split('=', 1)
-      # Parse booleans and ints
-      if val.lower() in ('true', 'false'):
-        val = val.lower() == 'true'
-      elif val.lstrip('-').isdigit():
-        val = int(val)
-      elif val.replace('.', '', 1).lstrip('-').isdigit():
-        val = float(val)
-      cfg_dict[key] = val
+    if not arg.startswith('--'):
+      continue
+
+    # Support boolean flags without '=' for common toggles.
+    if '=' not in arg:
+      if arg == '--resume':
+        cfg_dict['resume'] = True
+      elif arg == '--no-resume':
+        cfg_dict['resume'] = False
+      continue
+
+    key, val = arg[2:].split('=', 1)
+    # Parse booleans and ints
+    if val.lower() in ('true', 'false'):
+      val = val.lower() == 'true'
+    elif val.lstrip('-').isdigit():
+      val = int(val)
+    elif val.replace('.', '', 1).lstrip('-').isdigit():
+      val = float(val)
+    cfg_dict[key] = val
 
   cfg = Config(**cfg_dict)
 

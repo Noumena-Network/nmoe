@@ -283,7 +283,8 @@ def update_lr(optimizer: torch.optim.Optimizer, dense_groups: list[dict], step: 
     else:
       g['lr'] = lr_dense
 
-  return float(optimizer.param_groups[0]['lr'])
+  # Return the dense LR for logging (backward compatible with older single-LR configs).
+  return float(lr_dense)
 
 
 def step(model: torch.nn.Module, optimizer: torch.optim.Optimizer, dense_groups: list[dict], zero2_state: dict, cfg: Config, world: int) -> None:

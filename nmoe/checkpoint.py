@@ -119,7 +119,7 @@ def _materialize_to_cpu_sync(state: dict[str, Any]) -> dict[str, Any]:
     def _copy(obj: Any, ckpt_stream: Optional[torch.cuda.Stream]) -> Any:
         if isinstance(obj, torch.Tensor):
             if obj.is_cuda:
-                dst = torch.empty_like(obj, device='cpu', pin_memory=True)
+                dst = torch.empty_like(obj, device='cpu', pin_memory=False)
                 if ckpt_stream is not None:
                     with torch.cuda.stream(ckpt_stream):
                         dst.copy_(obj, non_blocking=True)
@@ -267,8 +267,7 @@ class _AsyncSaver(threading.Thread):
                 return
             assert isinstance(item, AsyncTask)
             try:
-                state = self._materialize_to_cpu(item.state)
-                bytes_written, ms = self._atomic_save(item.path, state)
+                bytes_written, ms = self._atomic_save(item.path, item.state)
                 # Do not flip tracker here; finalize step will update when complete
                 if self._on_saved is not None:
                     try:
@@ -290,8 +289,11 @@ class _AsyncSaver(threading.Thread):
     def submit(self, path: str, base: str, step: int, state: dict[str, Any]) -> None:
         if self._error is not None:
             raise RuntimeError(f"checkpoint async saver previously failed: {self._error}") from self._error
+        # Reliability invariant: enqueue CPU materialized state only. The background thread must
+        # never hold references to live CUDA tensors from the training step.
+        cpu_state = _materialize_to_cpu_sync(state)
         try:
-            self.q.put(AsyncTask(path, base, step, state), block=True, timeout=60.0)
+            self.q.put(AsyncTask(path, base, step, cpu_state), block=True, timeout=60.0)
         except queue.Full as e:
             raise RuntimeError(
                 f"checkpoint async queue full (step={step}, path={path}). "
@@ -299,18 +301,22 @@ class _AsyncSaver(threading.Thread):
             ) from e
 
     def close(self) -> None:
-        self.q.put(None)
+        # Signal thread to exit and wait for a clean shutdown to avoid interpreter
+        # teardown while the background thread still references Python objects.
+        try:
+            self.q.put(None)
+        except Exception:
+            return
+        try:
+            self.join(timeout=60.0)
+        except Exception:
+            pass
 
     def wait(self) -> None:
         # Wait until all queued tasks are processed
         self.q.join()
         if self._error is not None:
             raise RuntimeError(f"checkpoint async saver failed: {self._error}") from self._error
-
-    @torch.no_grad()
-    def _materialize_to_cpu(self, state: dict[str, Any]) -> dict[str, Any]:
-        # Use shared helper that supports dict/list/tuple
-        return _materialize_to_cpu_sync(state)
 
     def _atomic_save(self, path: str, state: dict[str, Any]) -> tuple[int, float]:
         t0 = time.perf_counter()

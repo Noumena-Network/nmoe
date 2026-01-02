@@ -4,6 +4,8 @@ Handles platform checks, distributed setup, and seeds.
 Seamlessly supports single GPU, single-node multi-GPU, and multi-node training.
 """
 import os
+import sys
+from pathlib import Path
 import torch
 import torch.distributed as dist
 
@@ -18,6 +20,16 @@ def _require_b200():
       f"This repo targets NVIDIA B200 (sm_100a). Detected compute capability {major}.{minor}. "
       "Off-target is not supported."
     )
+
+
+def _ensure_third_party_imports() -> None:
+  """Ensure vendored deps are importable (container-first contract)."""
+  root = Path(__file__).resolve().parents[1]
+  flash_attn = root / "third_party" / "flash_attn"
+  if flash_attn.exists():
+    p = str(flash_attn)
+    if p not in sys.path:
+      sys.path.insert(0, p)
 
 
 def init(seed: int = 42) -> tuple[int, int]:
@@ -35,6 +47,7 @@ def init(seed: int = 42) -> tuple[int, int]:
   - Multi-node: same as single-node, world > local_world
   """
   _require_b200()
+  _ensure_third_party_imports()
 
   # Seeds and TF32
   torch.backends.cuda.matmul.allow_tf32 = True

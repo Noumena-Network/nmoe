@@ -17,6 +17,35 @@ def _ceil_div(a: int, b: int) -> int:
   return (a + b - 1) // b
 
 
+def _rs_chunk_elems(*, dtype: torch.dtype, world: int, shard_size: int) -> tuple[int, int]:
+  """Return (shard_chunk, total_chunk_elems) for chunked reduce-scatter buffers.
+
+  total_chunk_elems == world * shard_chunk.
+  """
+  if world <= 0:
+    raise RuntimeError(f"ZeRO-2: invalid world_size={world}")
+  if shard_size <= 0:
+    raise RuntimeError(f"ZeRO-2: invalid shard_size={shard_size}")
+
+  # Default: 2 GiB per dtype/group. Net win vs allocating padded_total for flat_grad.
+  chunk_mb = int(os.getenv("NMOE_ZERO2_RS_CHUNK_MB", "2048"))
+  if chunk_mb <= 0:
+    raise RuntimeError(f"NMOE_ZERO2_RS_CHUNK_MB must be > 0 (got {chunk_mb})")
+  bytes_per_elem = torch.empty((), dtype=dtype).element_size()
+  target_elems_total = (chunk_mb * 1024 * 1024) // max(1, bytes_per_elem)
+  # Must be divisible by world, and at least 1 elem per rank.
+  target_shard_chunk = max(1, int(target_elems_total) // int(world))
+  # Prefer an alignment that is friendly to both memcpy and NCCL (elements, not bytes).
+  align = 256
+  if shard_size <= align:
+    shard_chunk = shard_size
+  else:
+    shard_chunk = max(align, (target_shard_chunk // align) * align)
+    shard_chunk = min(shard_chunk, shard_size)
+  total_chunk_elems = int(shard_chunk) * int(world)
+  return int(shard_chunk), int(total_chunk_elems)
+
+
 def _get_or_init_flat_group(
   group: dict,
   *,
@@ -68,9 +97,12 @@ def _get_or_init_flat_group(
   for p, (a, b) in zip(params, offsets):
     p.data = flat_param[a:b].view_as(p)  # type: ignore[assignment]
 
-  # Scratch (persistent): full grad buffer + RS output + local param shard.
-  flat_grad = torch.empty(padded_total, dtype=dtype, device=dev)
-  grad_shard = torch.empty(shard_size, dtype=dtype, device=dev)
+  # Scratch (persistent):
+  # - Chunked reduce-scatter buffers (avoid allocating flat_grad of size padded_total).
+  # - Local param shard (the only shard we update).
+  shard_chunk, total_chunk_elems = _rs_chunk_elems(dtype=dtype, world=world, shard_size=shard_size)
+  rs_in = torch.empty(total_chunk_elems, dtype=dtype, device=dev)
+  rs_out = torch.empty(shard_chunk, dtype=dtype, device=dev)
   if world == 1:
     param_shard = flat_param[:shard_size]  # view (no comm)
   else:
@@ -86,9 +118,10 @@ def _get_or_init_flat_group(
     'padded_total': padded_total,
     'shard_size': shard_size,
     'flat_param': flat_param,
-    'flat_grad': flat_grad,
-    'grad_shard': grad_shard,
     'param_shard': param_shard,
+    'rs_in': rs_in,
+    'rs_out': rs_out,
+    'shard_chunk': shard_chunk,
   }
   cache[key] = flat
   return flat
@@ -143,61 +176,99 @@ def step_dense_adamw(
     for dtype, group_params in by_dtype.items():
       flat = _get_or_init_flat_group(group, params=group_params, rank=rank, world=world, dtype=dtype)
       flat_param = flat['flat_param']
-      flat_grad = flat['flat_grad']
-      grad_shard = flat['grad_shard']
       param_shard = flat['param_shard']
+      rs_in = flat['rs_in']
+      rs_out = flat['rs_out']
       offsets: list[tuple[int, int]] = flat['offsets']
       total = int(flat['total'])
       padded_total = int(flat['padded_total'])
       shard_size = int(flat['shard_size'])
-
-      # Pack grads into persistent flat buffer (no torch.cat in hot path).
-      flat_grad.zero_()
-      for p, (a, b) in zip(group_params, offsets):
-        if p.grad is None:
-          continue
-        flat_grad[a:b].copy_(p.grad.detach().view(-1))
-
-      # Reduce-scatter(AVG) grads (or local shard when world==1).
-      if world == 1:
-        grad_shard.copy_(flat_grad[:shard_size])
-      else:
-        with time_ctx('time_ms/zero2_reduce_scatter'):
-          dist.reduce_scatter_tensor(grad_shard, flat_grad, op=dist.ReduceOp.AVG, group=pg)
+      shard_chunk = int(flat['shard_chunk'])
 
       # Get or initialize shard state
       state_key = f"shard_{rank}_{group_idx}_{dtype}"
       if state_key not in state:
         state[state_key] = {
           'step': 0,
-          'exp_avg': torch.zeros_like(grad_shard),
-          'exp_avg_sq': torch.zeros_like(grad_shard),
+          'exp_avg': torch.zeros(shard_size, dtype=dtype, device=param_shard.device),
+          'exp_avg_sq': torch.zeros(shard_size, dtype=dtype, device=param_shard.device),
         }
 
       s = state[state_key]
       s['step'] += 1
 
-      # AdamW update on shard
+      # AdamW update on shard (streamed per reduce-scatter chunk).
       beta1, beta2 = betas
       exp_avg = s['exp_avg']
       exp_avg_sq = s['exp_avg_sq']
 
-      exp_avg.mul_(beta1).add_(grad_shard, alpha=1 - beta1)
-      exp_avg_sq.mul_(beta2).addcmul_(grad_shard, grad_shard, value=1 - beta2)
-
       # Bias correction
       bias_correction1 = 1 - beta1 ** s['step']
       bias_correction2 = 1 - beta2 ** s['step']
-      step_size = group['lr'] / bias_correction1
+      lr = float(group['lr'])
+      wd = float(group.get('weight_decay', 0.0))
+      step_size = lr / bias_correction1
+      inv_bc2_sqrt = 1.0 / math.sqrt(bias_correction2)
 
-      denom = (exp_avg_sq.sqrt() / math.sqrt(bias_correction2)).add_(eps)
+      # Precompute flat views of grads (avoid repeated reshape work).
+      grad_views: list[torch.Tensor | None] = []
+      for p in group_params:
+        if p.grad is None:
+          grad_views.append(None)
+        else:
+          grad_views.append(p.grad.detach().reshape(-1))
 
-      # Weight decay
-      if group['weight_decay'] > 0:
-        param_shard.mul_(1 - group['lr'] * group['weight_decay'])
+      # Chunked reduce-scatter:
+      # Treat conceptual flat_grad as [world, shard_size] laid out row-major.
+      # For each shard offset, build rs_in[r, :] for each rank r, then RS(AVG) into rs_out.
+      rs_in2d = rs_in.view(world, shard_chunk)
+      cursors = [0 for _ in range(world)]
 
-      # Update shard
-      param_shard.addcdiv_(exp_avg, denom, value=-step_size)
+      with time_ctx('time_ms/zero2_reduce_scatter'):
+        for shard_off in range(0, shard_size, shard_chunk):
+          chunk_len = min(shard_chunk, shard_size - shard_off)
+          # Zero rs_in for this chunk (required to avoid leaking previous chunk values).
+          rs_in2d.zero_()
+
+          for src_rank in range(world):
+            g0 = src_rank * shard_size + shard_off
+            if g0 >= total:
+              continue
+            g1 = min(g0 + chunk_len, total)
+            row = rs_in2d[src_rank]
+
+            i = cursors[src_rank]
+            while i < len(offsets) and offsets[i][1] <= g0:
+              i += 1
+            cursors[src_rank] = i
+
+            while i < len(offsets) and offsets[i][0] < g1:
+              a, b = offsets[i]
+              o0 = g0 if g0 > a else a
+              o1 = g1 if g1 < b else b
+              if o1 > o0:
+                gv = grad_views[i]
+                if gv is not None:
+                  row[(o0 - g0):(o1 - g0)].copy_(gv[(o0 - a):(o1 - a)])
+              i += 1
+
+          if world == 1:
+            rs_out[:chunk_len].copy_(rs_in2d[0, :chunk_len])
+          else:
+            dist.reduce_scatter_tensor(rs_out, rs_in, op=dist.ReduceOp.AVG, group=pg)
+
+          g = rs_out[:chunk_len]
+          p = param_shard[shard_off:(shard_off + chunk_len)]
+          m = exp_avg[shard_off:(shard_off + chunk_len)]
+          v = exp_avg_sq[shard_off:(shard_off + chunk_len)]
+
+          m.mul_(beta1).add_(g, alpha=1 - beta1)
+          v.mul_(beta2).addcmul_(g, g, value=1 - beta2)
+
+          denom = v.sqrt().mul_(inv_bc2_sqrt).add_(eps)
+          if wd > 0.0:
+            p.mul_(1.0 - lr * wd)
+          p.addcdiv_(m, denom, value=-step_size)
 
       # Sync updated params to all ranks (no-op when world==1).
       if world > 1:
