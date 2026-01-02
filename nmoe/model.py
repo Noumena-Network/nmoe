@@ -244,7 +244,7 @@ class Transformer(nn.Module):
     return expert_params, dense_params
 
   @record_function("transformer")
-  def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+  def forward(self, tokens: torch.Tensor, return_hidden: bool = False) -> torch.Tensor:
     with record_function("embedding"):
       x = self.embedding(tokens) * self.mup_scale_factor
     seqlen = tokens.size(1)
@@ -263,6 +263,10 @@ class Transformer(nn.Module):
           m.last_loads = l
     with record_function("norm_f"):
       x = self.norm(x)
+    if return_hidden:
+      # Return pre-logits activations scaled so that `hidden @ W.T` matches
+      # `lm_head(hidden_unscaled) * logits_scale_factor` (bias-free).
+      return x * self.logits_scale_factor
     # Dynamic amax scaling handles range - no clamp needed (TorchTitan/Megatron pattern)
     with record_function("lm_head"):
       logits = self.lm_head(x) * self.logits_scale_factor
