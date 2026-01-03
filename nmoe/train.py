@@ -97,12 +97,20 @@ def train(cfg: Config):
         loader_wait_ms = (time.perf_counter() - t0) * 1000.0
 
         with nvtx_ctx('train/fwd_total'), time_ctx('time_ms/fwd_total'):
-          logits = model(inputs)
+          logits = model(inputs, targets=targets)
 
         with nvtx_ctx('train/loss'), time_ctx('time_ms/loss'):
           loss_unreduced = F.cross_entropy(logits.reshape(-1, cfg.vocab_size), targets.reshape(-1), reduction='none')
           mask = (targets != cfg.eos_token_id).reshape(-1).float()
           loss = (loss_unreduced * mask).sum() / mask.sum().clamp(min=1.0)
+
+          # MTP loss integration with λ scheduling (0.3 → 0.1 step)
+          if model.mtp is not None and model.mtp.last_loss is not None:
+            mtp_lambda = cfg.mtp_lambda
+            step_tokens = getattr(cfg, 'mtp_lambda_step_tokens', 0)
+            if step_tokens > 0 and tokens_seen >= step_tokens:
+              mtp_lambda = 0.1
+            loss = loss + mtp_lambda * model.mtp.last_loss
 
         model.zero_grad(set_to_none=True)
         with nvtx_ctx('train/bwd_total'), time_ctx('time_ms/bwd_total'):
