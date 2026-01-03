@@ -183,12 +183,15 @@ class MTP(nn.Module):
         h_k = self.blocks[k](h_prev_k, token_emb, cos_k, sin_k)
         h_normed = self.output_norms[k](h_k)
         logits_k = self.lm_head(h_normed) * self.logits_scale
+        # Paper eq 24: L_k = (1/T) Σ losses, NOT (1/seq_len_k)
+        # Deeper depths have fewer positions but same denominator → less weight
+        # For batch: average over B sequences, each divided by T
         loss_k = F.cross_entropy(
           logits_k.reshape(-1, logits_k.size(-1)),
           target_tokens.reshape(-1),
           ignore_index=self.ignore_index,
-          reduction="mean",
-        )
+          reduction="sum",
+        ) / (B * T)
         total_loss = total_loss + loss_k
         h_prev = h_k
 
