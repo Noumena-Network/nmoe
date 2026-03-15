@@ -1,0 +1,105 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nmoe-campaign-speedrun-super-research
+  labels:
+    app: nmoe
+    role: campaign
+    campaign: speedrun-super-research
+spec:
+  parallelism: 4
+  completions: 4
+  completionMode: Indexed
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: nmoe
+        role: campaign
+        campaign: speedrun-super-research
+    spec:
+      restartPolicy: Never
+      runtimeClassName: nvidia
+      priorityClassName: nmoe-autoresearch
+      preemptionPolicy: PreemptLowerPriority
+      tolerations:
+        - key: nvidia.com/gpu
+          value: "true"
+          effect: NoSchedule
+      containers:
+        - name: campaign
+          image: xjdr/nmoe_debug:latest
+          imagePullPolicy: Always
+          workingDir: /workspace/nmoe
+          command: ["/bin/bash", "-lc"]
+          args:
+            - |
+              set -euo pipefail
+              export PYTHONPATH="/workspace/nmoe:/workspace/nmoe/nmoe/csrc:/workspace/nmoe/third_party/flash_attn:/workspace/nmoe/third_party/quack:/workspace/nmoe/triton/python"
+              export NMOE_FLASH_ATTN_PATH="/workspace/nmoe/third_party/flash_attn"
+              export NMOE_QUACK_PATH="/workspace/nmoe/third_party/quack"
+              export NMOE_TRITON_PYTHON_PATH="/workspace/nmoe/triton/python"
+              export NMOE_AUTORESEARCH_WORKER_ID="${NMOE_AUTORESEARCH_WORKER_ID:-$(hostname)}"
+              export NMOE_EXPERIMENTS_DB="/dev/shm/experiments-${NMOE_AUTORESEARCH_WORKER_ID}.db"
+              export MASTER_PORT="${MASTER_PORT:-29500}"
+
+              echo "=== starting nmoe campaign worker ==="
+              echo "worker=${NMOE_AUTORESEARCH_WORKER_ID}"
+              echo "campaign=${CAMPAIGN_REF}"
+              echo "stage=${CAMPAIGN_STAGE}"
+              echo "receipt_dir=${CAMPAIGN_RECEIPT_DIR}"
+              echo "max_trials=${CAMPAIGN_MAX_TRIALS}"
+              echo "experiments_db=${NMOE_EXPERIMENTS_DB}"
+
+              /workspace/nmoe/.venv/bin/python -m nmoe.cli.main campaign auto \
+                "${CAMPAIGN_REF}" \
+                --stage "${CAMPAIGN_STAGE}" \
+                --receipt-dir "${CAMPAIGN_RECEIPT_DIR}" \
+                --max-trials "${CAMPAIGN_MAX_TRIALS}" \
+                --max-no-improve "${CAMPAIGN_MAX_NO_IMPROVE}"
+          env:
+            - name: PYTORCH_CUDA_ALLOC_CONF
+              value: "expandable_segments:True"
+            - name: NMOE_AUTORESEARCH_WORKER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: CAMPAIGN_REF
+              value: "speedrun_super_research"
+            - name: CAMPAIGN_STAGE
+              value: "benchmark"
+            - name: CAMPAIGN_RECEIPT_DIR
+              value: "/data/campaign_runs"
+            - name: CAMPAIGN_MAX_TRIALS
+              value: "1"
+            - name: CAMPAIGN_MAX_NO_IMPROVE
+              value: "1"
+            - name: NMOE_AUTORESEARCH_ENABLE_LLM
+              value: "1"
+            - name: NMOE_AUTORESEARCH_MODEL
+              value: "gpt-4o-mini"
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openai-api-key
+                  key: OPENAI_API_KEY
+                  optional: true
+          resources:
+            requests:
+              nvidia.com/gpu: 8
+            limits:
+              nvidia.com/gpu: 8
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: dshm
+              mountPath: /dev/shm
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: nmoe-data
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Gi

@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="780" viewBox="0 0 640 780" role="img">
+<style>.t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}.m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}.muted{fill:#7c7c7c}.axis{stroke:#6b6b6b;stroke-width:1}.grid{stroke:#b8b1aa;stroke-width:1;opacity:.35}.dotted{stroke-dasharray:4 4}</style>
+<text x="320" y="24" font-size="18" text-anchor="middle" class="t">Router health: a normal run vs a collapsed run</text>
+<text x="320" y="46" font-size="13" text-anchor="middle" class="t muted">(healthy: MoE-64 BF16; collapsed: Super-4096 BF16)</text>
+
+<!-- Panel 1: Mean CV (%) - reduced grid lines -->
+<text x="64" y="76" font-size="13" text-anchor="start" class="t muted">Mean CV (%)</text>
+<line x1="64.0" y1="86" x2="64.0" y2="256" class="grid" />
+<text x="64.0" y="274" font-size="12" text-anchor="middle" class="t muted">0</text>
+<line x1="203.5" y1="86" x2="203.5" y2="256" class="grid" />
+<text x="203.5" y="274" font-size="12" text-anchor="middle" class="t muted">3k</text>
+<line x1="343.0" y1="86" x2="343.0" y2="256" class="grid" />
+<text x="343.0" y="274" font-size="12" text-anchor="middle" class="t muted">6k</text>
+<line x1="482.5" y1="86" x2="482.5" y2="256" class="grid" />
+<text x="482.5" y="274" font-size="12" text-anchor="middle" class="t muted">9k</text>
+<line x1="622.0" y1="86" x2="622.0" y2="256" class="grid" />
+<text x="622.0" y="274" font-size="12" text-anchor="middle" class="t muted">12k</text>
+<!-- Y-axis: 0-2200% with 500% intervals (170px range: y=256 to y=86) -->
+<line x1="64" y1="256.0" x2="622" y2="256.0" class="axis" />
+<text x="54" y="260.0" font-size="12" text-anchor="end" class="t muted">0%</text>
+<line x1="64" y1="217.3" x2="622" y2="217.3" class="grid" />
+<text x="54" y="221.3" font-size="12" text-anchor="end" class="t muted">500%</text>
+<line x1="64" y1="178.6" x2="622" y2="178.6" class="grid" />
+<text x="54" y="182.6" font-size="12" text-anchor="end" class="t muted">1000%</text>
+<line x1="64" y1="139.9" x2="622" y2="139.9" class="grid" />
+<text x="54" y="143.9" font-size="12" text-anchor="end" class="t muted">1500%</text>
+<line x1="64" y1="101.2" x2="622" y2="101.2" class="grid" />
+<text x="54" y="105.2" font-size="12" text-anchor="end" class="t muted">2000%</text>
+<line x1="64" y1="86.0" x2="622" y2="86.0" class="axis" />
+<line x1="64" y1="256" x2="64" y2="86" class="axis" />
+<!-- CV data: transform from old scale (0%=250.7, 2200%=84.5) to new scale (0%=256, 2200%=86) -->
+<!-- healthy (orange): stays low ~90-100% -->
+<path d="M 64.0 248.7 L 68.7 240.1 L 73.3 242.7 L 78.0 242.8 L 82.6 243.0 L 87.2 243.0 L 91.9 243.3 L 96.5 243.1 L 101.2 243.3 L 105.8 243.3 L 110.5 243.6 L 115.2 243.5 L 119.8 243.5 L 124.5 243.5 L 129.1 243.4 L 133.8 243.4 L 138.4 243.2 L 143.1 243.3 L 147.7 243.5 L 152.3 243.4 L 157.0 243.5 L 161.6 243.3 L 166.3 243.6 L 170.9 243.8 L 175.6 244.0 L 180.2 243.9 L 184.9 244.0 L 189.6 244.2 L 194.2 244.6 L 198.8 244.9 L 203.5 245.0 L 208.2 244.8 L 212.8 244.5 L 217.5 244.9 L 222.1 245.3 L 226.8 244.8 L 231.4 244.6 L 236.1 244.8 L 240.7 244.7 L 245.3 245.0 L 250.0 245.3 L 254.7 245.3 L 259.3 245.3 L 263.9 245.4 L 268.6 245.5 L 273.2 245.5 L 277.9 245.7 L 282.6 245.9 L 287.2 245.9 L 291.9 246.2 L 296.5 246.3 L 301.1 246.4 L 305.8 246.6 L 310.4 246.7 L 315.1 246.8 L 319.8 246.8 L 324.4 246.6 L 329.1 246.6 L 333.7 246.7 L 338.3 246.8 L 343.0 247.0 L 347.6 247.0 L 352.3 247.1 L 356.9 247.3 L 361.6 247.4 L 366.2 247.4 L 370.9 247.5 L 375.6 247.5 L 380.2 247.5 L 384.8 247.4 L 389.5 247.4 L 394.1 247.3 L 398.8 247.3 L 403.4 247.0 L 408.1 247.0 L 412.8 247.0 L 417.4 247.0 L 422.1 247.0 L 426.7 247.1 L 431.4 247.4 L 436.0 247.7 L 440.7 247.9 L 445.3 248.0 L 449.9 248.3 L 454.6 248.4 L 459.2 248.7 L 463.9 248.8 L 468.6 248.8 L 473.2 248.8 L 477.9 248.9 L 482.5 249.1 L 487.1 249.3 L 491.8 249.3 L 496.4 249.5 L 501.1 249.6 L 505.8 249.8 L 507.4 249.8" stroke="#FF9101" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<!-- collapsed (gray): rises to 1500-2000% -->
+<path d="M 64.0 240.5 L 68.7 212.7 L 73.3 240.1 L 78.0 237.2 L 82.6 239.0 L 87.2 234.7 L 91.9 232.3 L 96.5 227.7 L 101.2 225.9 L 105.8 219.1 L 110.5 221.0 L 115.2 221.3 L 119.8 205.3 L 124.5 206.7 L 129.1 206.2 L 133.8 207.6 L 138.4 204.5 L 143.1 206.0 L 147.7 201.2 L 152.3 197.4 L 157.0 195.2 L 161.6 191.4 L 166.3 192.2 L 170.9 189.9 L 175.6 183.6 L 180.2 174.9 L 184.9 168.4 L 189.6 167.9 L 194.2 169.1 L 198.8 167.5 L 203.5 163.4 L 208.2 160.5 L 212.8 153.8 L 217.5 150.9 L 222.1 148.2 L 226.8 146.7 L 231.4 146.5 L 236.1 146.3 L 240.7 142.2 L 245.3 140.4 L 250.0 140.4 L 254.7 139.6 L 259.3 139.5 L 263.9 135.2 L 268.6 137.8 L 273.2 137.5 L 277.9 136.1 L 282.6 134.7 L 287.2 135.7 L 291.9 136.7 L 296.5 136.2 L 301.1 136.1 L 305.8 137.5 L 310.4 134.1 L 315.1 135.3 L 319.8 135.5 L 324.4 138.8 L 329.1 133.5 L 333.7 132.6 L 338.3 135.4 L 343.0 135.3 L 347.6 135.4 L 352.3 137.9 L 356.9 137.4 L 361.6 138.3 L 366.2 135.5 L 370.9 133.9 L 375.6 131.6 L 380.2 133.5 L 384.8 131.9 L 389.5 132.1 L 394.1 131.4 L 398.8 133.3 L 403.4 129.0 L 408.1 131.6 L 412.8 131.4 L 417.4 131.8 L 422.1 131.6 L 426.7 132.5 L 431.4 133.2 L 436.0 129.6 L 440.7 133.6 L 445.3 134.2 L 449.9 131.5 L 454.6 133.4 L 459.2 132.8 L 463.9 134.4 L 468.6 134.0 L 473.2 135.2 L 477.9 134.8 L 482.5 136.1 L 487.1 136.0 L 491.8 136.3 L 496.4 137.5 L 501.1 136.8 L 505.8 136.3 L 510.4 137.7 L 515.0 136.5 L 519.7 138.2 L 524.3 139.4 L 529.0 135.6 L 533.6 136.7 L 538.3 138.2 L 543.0 136.6 L 547.6 137.9 L 552.2 139.0 L 556.9 141.0 L 561.5 142.1 L 566.2 141.5 L 570.9 141.5 L 575.5 142.1 L 580.1 146.4 L 584.8 141.8 L 589.5 144.2 L 594.1 145.0 L 598.8 145.2 L 603.4 146.8 L 608.0 147.2 L 612.7 147.0 L 617.4 147.0 L 622.0 147.0" stroke="#6b6b6b" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+
+<!-- Panel 2: Layer 0 max_load (%) -->
+<text x="64" y="316" font-size="13" text-anchor="start" class="t muted">Layer 0 max_load (%)</text>
+<line x1="64.0" y1="326" x2="64.0" y2="496" class="grid" />
+<text x="64.0" y="514" font-size="12" text-anchor="middle" class="t muted">0</text>
+<line x1="203.5" y1="326" x2="203.5" y2="496" class="grid" />
+<text x="203.5" y="514" font-size="12" text-anchor="middle" class="t muted">3k</text>
+<line x1="343.0" y1="326" x2="343.0" y2="496" class="grid" />
+<text x="343.0" y="514" font-size="12" text-anchor="middle" class="t muted">6k</text>
+<line x1="482.5" y1="326" x2="482.5" y2="496" class="grid" />
+<text x="482.5" y="514" font-size="12" text-anchor="middle" class="t muted">9k</text>
+<line x1="622.0" y1="326" x2="622.0" y2="496" class="grid" />
+<text x="622.0" y="514" font-size="12" text-anchor="middle" class="t muted">12k</text>
+<line x1="64" y1="490.9" x2="622" y2="490.9" class="grid" />
+<text x="54" y="494.9" font-size="12" text-anchor="end" class="t muted">0.0%</text>
+<line x1="64" y1="467.9" x2="622" y2="467.9" class="grid" />
+<text x="54" y="471.9" font-size="12" text-anchor="end" class="t muted">2.5%</text>
+<line x1="64" y1="444.9" x2="622" y2="444.9" class="grid" />
+<text x="54" y="448.9" font-size="12" text-anchor="end" class="t muted">5.0%</text>
+<line x1="64" y1="422.0" x2="622" y2="422.0" class="grid" />
+<text x="54" y="426.0" font-size="12" text-anchor="end" class="t muted">7.5%</text>
+<line x1="64" y1="399.0" x2="622" y2="399.0" class="grid" />
+<text x="54" y="403.0" font-size="12" text-anchor="end" class="t muted">10.0%</text>
+<line x1="64" y1="376.0" x2="622" y2="376.0" class="grid" />
+<text x="54" y="380.0" font-size="12" text-anchor="end" class="t muted">12.5%</text>
+<line x1="64" y1="353.0" x2="622" y2="353.0" class="grid" />
+<text x="54" y="357.0" font-size="12" text-anchor="end" class="t muted">15.0%</text>
+<line x1="64" y1="330.1" x2="622" y2="330.1" class="grid" />
+<text x="54" y="334.1" font-size="12" text-anchor="end" class="t muted">17.5%</text>
+<line x1="64" y1="307.1" x2="622" y2="307.1" class="grid" />
+<text x="54" y="311.1" font-size="12" text-anchor="end" class="t muted">20.0%</text>
+<line x1="64" y1="496" x2="622" y2="496" class="axis" />
+<line x1="64" y1="496" x2="64" y2="326" class="axis" />
+<!-- 1/K reference line at ~14.3% -->
+<line x1="64" y1="362.7" x2="622" y2="362.7" class="grid dotted" />
+<text x="616" y="358.7" font-size="11" text-anchor="end" class="t muted">1/K</text>
+<!-- healthy max_load (orange) -->
+<path d="M 64.0 449.5 L 68.7 394.1 L 73.3 398.6 L 78.0 401.9 L 82.6 395.5 L 87.2 396.6 L 91.9 393.7 L 96.5 392.0 L 101.2 390.1 L 105.8 382.9 L 110.5 383.5 L 115.2 382.8 L 119.8 385.3 L 124.5 380.6 L 129.1 377.5 L 133.8 384.8 L 138.4 379.5 L 143.1 379.9 L 147.7 385.3 L 152.3 379.5 L 157.0 383.4 L 161.6 385.5 L 166.3 382.8 L 170.9 381.4 L 175.6 383.3 L 180.2 382.2 L 184.9 388.7 L 189.6 386.2 L 194.2 388.3 L 198.8 390.3 L 203.5 390.2 L 208.2 393.3 L 212.8 392.3 L 217.5 397.5 L 222.1 402.1 L 226.8 339.1 L 231.4 337.7 L 236.1 337.7 L 240.7 337.7 L 245.3 337.7 L 250.0 337.7 L 254.7 337.7 L 259.3 337.7 L 263.9 337.7 L 268.6 337.7 L 273.2 337.7 L 277.9 337.7 L 282.6 337.7 L 287.2 337.7 L 291.9 337.7 L 296.5 337.7 L 301.1 337.7 L 305.8 337.7 L 310.4 337.7 L 315.1 337.7 L 319.8 337.7 L 324.4 337.7 L 329.1 337.7 L 333.7 337.7 L 338.3 337.8 L 343.0 337.8 L 347.6 337.9 L 352.3 337.8 L 356.9 337.9 L 361.6 337.9 L 366.2 338.1 L 370.9 338.1 L 375.6 338.2 L 380.2 338.8 L 384.8 339.0 L 389.5 339.1 L 394.1 340.2 L 398.8 343.4 L 403.4 345.0 L 408.1 349.2 L 412.8 349.2 L 417.4 356.5 L 422.1 356.5 L 426.7 364.4 L 431.4 338.1 L 436.0 337.9 L 440.7 338.0 L 445.3 337.9 L 449.9 337.9 L 454.6 337.9 L 459.2 338.0 L 463.9 337.9 L 468.6 337.9 L 473.2 338.0 L 477.9 338.0 L 482.5 338.0 L 487.1 338.0 L 491.8 338.0 L 496.4 338.0 L 501.1 338.0 L 505.8 338.0 L 507.4 338.0" stroke="#FF9101" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<!-- collapsed max_load (gray) - hits 1/K ceiling -->
+<path d="M 64.0 473.3 L 68.7 474.8 L 73.3 483.4 L 78.0 483.2 L 82.6 484.3 L 87.2 434.8 L 91.9 419.8 L 96.5 402.1 L 101.2 369.5 L 105.8 364.0 L 110.5 365.3 L 115.2 362.4 L 119.8 359.7 L 124.5 359.7 L 129.1 360.5 L 133.8 362.8 L 138.4 360.7 L 143.1 359.7 L 147.7 359.9 L 152.3 359.7 L 157.0 359.7 L 161.6 359.7 L 166.3 359.7 L 170.9 359.8 L 175.6 360.0 L 180.2 359.7 L 184.9 359.7 L 189.6 359.7 L 194.2 359.7 L 198.8 359.8 L 203.5 359.7 L 208.2 359.8 L 212.8 359.7 L 217.5 359.7 L 222.1 359.7 L 226.8 359.7 L 231.4 359.7 L 236.1 359.7 L 240.7 359.7 L 245.3 359.7 L 250.0 359.7 L 254.7 359.7 L 259.3 359.7 L 263.9 359.7 L 268.6 359.8 L 273.2 359.9 L 277.9 360.0 L 282.6 359.7 L 287.2 359.7 L 291.9 359.7 L 296.5 359.7 L 301.1 359.7 L 305.8 359.8 L 310.4 359.8 L 315.1 359.7 L 319.8 359.7 L 324.4 359.7 L 329.1 359.7 L 333.7 359.7 L 338.3 359.8 L 343.0 359.8 L 347.6 360.0 L 352.3 359.9 L 356.9 360.0 L 361.6 360.0 L 366.2 360.0 L 370.9 360.0 L 375.6 359.7 L 380.2 359.7 L 384.8 359.7 L 389.5 359.7 L 394.1 359.8 L 398.8 359.8 L 403.4 359.7 L 408.1 359.7 L 412.8 359.7 L 417.4 359.6 L 422.1 359.7 L 426.7 359.7 L 431.4 359.7 L 436.0 359.7 L 440.7 359.7 L 445.3 359.8 L 449.9 359.8 L 454.6 359.8 L 459.2 359.8 L 463.9 359.8 L 468.6 359.8 L 473.2 359.9 L 477.9 359.9 L 482.5 360.0 L 487.1 359.7 L 491.8 359.7 L 496.4 359.7 L 501.1 359.7 L 505.8 359.7 L 510.4 359.7 L 515.0 359.7 L 519.7 359.7 L 524.3 359.7 L 529.0 359.7 L 533.6 359.8 L 538.3 359.7 L 543.0 359.7 L 547.6 359.7 L 552.2 359.7 L 556.9 359.7 L 561.5 359.7 L 566.2 359.7 L 570.9 359.7 L 575.5 359.7 L 580.1 359.7 L 584.8 359.7 L 589.5 359.7 L 594.1 359.7 L 598.8 359.7 L 603.4 359.7 L 608.0 359.7 L 612.7 359.7 L 617.4 359.7 L 622.0 359.7" stroke="#6b6b6b" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+
+<!-- Panel 3: Min entropy (nats) - original scale 1.5-8.0 nats -->
+<text x="64" y="556" font-size="13" text-anchor="start" class="t muted">Min entropy (nats)</text>
+<line x1="64.0" y1="566" x2="64.0" y2="736" class="grid" />
+<text x="64.0" y="754" font-size="12" text-anchor="middle" class="t muted">0</text>
+<line x1="203.5" y1="566" x2="203.5" y2="736" class="grid" />
+<text x="203.5" y="754" font-size="12" text-anchor="middle" class="t muted">3k</text>
+<line x1="343.0" y1="566" x2="343.0" y2="736" class="grid" />
+<text x="343.0" y="754" font-size="12" text-anchor="middle" class="t muted">6k</text>
+<line x1="482.5" y1="566" x2="482.5" y2="736" class="grid" />
+<text x="482.5" y="754" font-size="12" text-anchor="middle" class="t muted">9k</text>
+<line x1="622.0" y1="566" x2="622.0" y2="736" class="grid" />
+<text x="622.0" y="754" font-size="12" text-anchor="middle" class="t muted">12k</text>
+<line x1="64" y1="738.6" x2="622" y2="738.6" class="grid" />
+<text x="54" y="742.6" font-size="12" text-anchor="end" class="t muted">1.5</text>
+<line x1="64" y1="724.4" x2="622" y2="724.4" class="grid" />
+<text x="54" y="728.4" font-size="12" text-anchor="end" class="t muted">2.0</text>
+<line x1="64" y1="710.3" x2="622" y2="710.3" class="grid" />
+<text x="54" y="714.3" font-size="12" text-anchor="end" class="t muted">2.5</text>
+<line x1="64" y1="696.2" x2="622" y2="696.2" class="grid" />
+<text x="54" y="700.2" font-size="12" text-anchor="end" class="t muted">3.0</text>
+<line x1="64" y1="682.0" x2="622" y2="682.0" class="grid" />
+<text x="54" y="686.0" font-size="12" text-anchor="end" class="t muted">3.5</text>
+<line x1="64" y1="667.9" x2="622" y2="667.9" class="grid" />
+<text x="54" y="671.9" font-size="12" text-anchor="end" class="t muted">4.0</text>
+<line x1="64" y1="653.8" x2="622" y2="653.8" class="grid" />
+<text x="54" y="657.8" font-size="12" text-anchor="end" class="t muted">4.5</text>
+<line x1="64" y1="639.6" x2="622" y2="639.6" class="grid" />
+<text x="54" y="643.6" font-size="12" text-anchor="end" class="t muted">5.0</text>
+<line x1="64" y1="625.5" x2="622" y2="625.5" class="grid" />
+<text x="54" y="629.5" font-size="12" text-anchor="end" class="t muted">5.5</text>
+<line x1="64" y1="611.4" x2="622" y2="611.4" class="grid" />
+<text x="54" y="615.4" font-size="12" text-anchor="end" class="t muted">6.0</text>
+<line x1="64" y1="597.2" x2="622" y2="597.2" class="grid" />
+<text x="54" y="601.2" font-size="12" text-anchor="end" class="t muted">6.5</text>
+<line x1="64" y1="583.1" x2="622" y2="583.1" class="grid" />
+<text x="54" y="587.1" font-size="12" text-anchor="end" class="t muted">7.0</text>
+<line x1="64" y1="569.0" x2="622" y2="569.0" class="grid" />
+<text x="54" y="573.0" font-size="12" text-anchor="end" class="t muted">7.5</text>
+<line x1="64" y1="554.8" x2="622" y2="554.8" class="grid" />
+<text x="54" y="558.8" font-size="12" text-anchor="end" class="t muted">8.0</text>
+<line x1="64" y1="736" x2="622" y2="736" class="axis" />
+<line x1="64" y1="736" x2="64" y2="566" class="axis" />
+<!-- healthy entropy (orange) - stays high ~3.5-4 nats -->
+<path d="M 64.0 676.7 L 68.7 713.7 L 73.3 703.7 L 78.0 702.8 L 82.6 700.4 L 87.2 699.2 L 91.9 698.3 L 96.5 697.9 L 101.2 697.2 L 105.8 697.9 L 110.5 698.8 L 115.2 699.0 L 119.8 698.7 L 124.5 698.2 L 129.1 698.3 L 133.8 697.5 L 138.4 698.2 L 143.1 697.8 L 147.7 696.7 L 152.3 697.2 L 157.0 695.8 L 161.6 696.2 L 166.3 695.1 L 170.9 694.7 L 175.6 693.6 L 180.2 692.5 L 184.9 692.5 L 189.6 690.9 L 194.2 690.0 L 198.8 688.2 L 203.5 686.3 L 208.2 685.6 L 212.8 688.9 L 217.5 686.4 L 222.1 685.0 L 226.8 683.8 L 231.4 683.3 L 236.1 682.1 L 240.7 681.6 L 245.3 681.3 L 250.0 681.3 L 254.7 681.0 L 259.3 681.2 L 263.9 681.0 L 268.6 680.5 L 273.2 680.6 L 277.9 679.8 L 282.6 679.0 L 287.2 681.0 L 291.9 678.7 L 296.5 678.6 L 301.1 678.1 L 305.8 677.8 L 310.4 678.5 L 315.1 678.1 L 319.8 678.7 L 324.4 680.8 L 329.1 681.1 L 333.7 680.9 L 338.3 680.7 L 343.0 680.1 L 347.6 680.5 L 352.3 680.2 L 356.9 679.8 L 361.6 679.3 L 366.2 678.9 L 370.9 678.6 L 375.6 677.9 L 380.2 677.8 L 384.8 676.7 L 389.5 677.9 L 394.1 678.2 L 398.8 677.4 L 403.4 676.8 L 408.1 679.1 L 412.8 680.5 L 417.4 680.8 L 422.1 680.5 L 426.7 680.1 L 431.4 680.4 L 436.0 679.6 L 440.7 678.9 L 445.3 678.8 L 449.9 677.9 L 454.6 677.3 L 459.2 676.2 L 463.9 675.6 L 468.6 675.8 L 473.2 676.0 L 477.9 675.7 L 482.5 675.2 L 487.1 675.2 L 491.8 674.9 L 496.4 675.0 L 501.1 674.8 L 505.8 674.3 L 507.4 674.3" stroke="#FF9101" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<!-- collapsed entropy (gray) - drops to ~2 nats -->
+<path d="M 64.0 602.0 L 68.7 640.3 L 73.3 577.7 L 78.0 592.5 L 82.6 581.6 L 87.2 584.4 L 91.9 592.4 L 96.5 601.5 L 101.2 627.8 L 105.8 638.7 L 110.5 620.3 L 115.2 643.2 L 119.8 667.7 L 124.5 657.9 L 129.1 654.2 L 133.8 663.7 L 138.4 687.2 L 143.1 682.2 L 147.7 683.2 L 152.3 686.5 L 157.0 697.4 L 161.6 692.3 L 166.3 696.2 L 170.9 695.5 L 175.6 689.2 L 180.2 706.0 L 184.9 711.9 L 189.6 710.7 L 194.2 705.8 L 198.8 705.6 L 203.5 709.6 L 208.2 709.0 L 212.8 709.2 L 217.5 709.4 L 222.1 711.2 L 226.8 712.1 L 231.4 715.6 L 236.1 712.3 L 240.7 713.9 L 245.3 713.8 L 250.0 714.7 L 254.7 715.6 L 259.3 715.4 L 263.9 716.2 L 268.6 716.3 L 273.2 715.9 L 277.9 715.9 L 282.6 716.5 L 287.2 716.8 L 291.9 718.2 L 296.5 717.3 L 301.1 718.8 L 305.8 715.8 L 310.4 714.6 L 315.1 714.6 L 319.8 715.1 L 324.4 712.0 L 329.1 715.1 L 333.7 717.5 L 338.3 716.1 L 343.0 714.8 L 347.6 714.7 L 352.3 714.8 L 356.9 715.5 L 361.6 714.5 L 366.2 714.6 L 370.9 716.8 L 375.6 718.4 L 380.2 718.3 L 384.8 716.8 L 389.5 717.6 L 394.1 717.6 L 398.8 720.4 L 403.4 723.7 L 408.1 723.4 L 412.8 723.7 L 417.4 722.5 L 422.1 722.9 L 426.7 721.5 L 431.4 720.6 L 436.0 723.1 L 440.7 719.1 L 445.3 720.0 L 449.9 721.5 L 454.6 721.9 L 459.2 720.4 L 463.9 721.0 L 468.6 724.3 L 473.2 723.4 L 477.9 720.9 L 482.5 719.9 L 487.1 721.3 L 491.8 721.1 L 496.4 719.7 L 501.1 721.8 L 505.8 723.9 L 510.4 720.4 L 515.0 721.6 L 519.7 722.3 L 524.3 723.1 L 529.0 722.8 L 533.6 720.6 L 538.3 721.6 L 543.0 721.2 L 547.6 721.8 L 552.2 721.4 L 556.9 717.7 L 561.5 718.4 L 566.2 717.6 L 570.9 719.7 L 575.5 718.9 L 580.1 719.6 L 584.8 718.3 L 589.5 718.1 L 594.1 718.2 L 598.8 717.6 L 603.4 717.6 L 608.0 717.4 L 612.7 717.6 L 617.4 717.8 L 622.0 717.5" stroke="#6b6b6b" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+
+<!-- Legend and x-axis label - moved down with more spacing -->
+<rect x="64" y="758" width="12" height="12" fill="#FF9101" />
+<text x="80" y="768" font-size="12" text-anchor="start" class="t muted">healthy (MoE-64)</text>
+<rect x="224" y="758" width="12" height="12" fill="#6b6b6b" />
+<text x="240" y="768" font-size="12" text-anchor="start" class="t muted">collapsed (Super-4096)</text>
+</svg>

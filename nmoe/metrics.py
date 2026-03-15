@@ -166,6 +166,7 @@ class Nvfp4NibbleFlipTracker:
 
 _NVFP4_FLIP: Nvfp4NibbleFlipTracker | None = None
 _NVFP4_FLIP_DISABLED: bool = False
+_PENDING_TRAIN_SIGNAL_OVERRIDES: dict[str, dict[str, float]] | None = None
 
 
 @dataclass
@@ -175,6 +176,27 @@ class MetricsState:
     total_mem: int
     num_flops_per_token: float
     gpu_peak_flops: float
+
+
+def publish_train_signal_overrides(overrides: Mapping[str, Mapping[str, float | int | None]]) -> None:
+    global _PENDING_TRAIN_SIGNAL_OVERRIDES
+    merged = dict(_PENDING_TRAIN_SIGNAL_OVERRIDES or {})
+    for group, values in overrides.items():
+        group_items = dict(merged.get(group, {}))
+        for key, value in values.items():
+            if value is None:
+                continue
+            group_items[str(key)] = float(value)
+        if group_items:
+            merged[str(group)] = group_items
+    _PENDING_TRAIN_SIGNAL_OVERRIDES = merged or None
+
+
+def pop_train_signal_overrides() -> dict[str, dict[str, float]]:
+    global _PENDING_TRAIN_SIGNAL_OVERRIDES
+    out = dict(_PENDING_TRAIN_SIGNAL_OVERRIDES or {})
+    _PENDING_TRAIN_SIGNAL_OVERRIDES = None
+    return out
 
 
 
@@ -791,12 +813,59 @@ class MetricsWriter:
             items.append(("memory/max_alloc_gib", memory_max_alloc_gib))
         self.insert_many(step, items)
 
+    def log_train_signal_group(self, step: int, group: str, *,
+                               grad_norm: Optional[float] = None,
+                               param_norm: Optional[float] = None,
+                               grad_to_param: Optional[float] = None,
+                               param_count: Optional[int] = None,
+                               pre_param_norm: Optional[float] = None,
+                               update_norm: Optional[float] = None,
+                               update_to_pre_param: Optional[float] = None,
+                               optimizer_update_norm: Optional[float] = None,
+                               optimizer_update_to_pre_param: Optional[float] = None,
+                               weight_decay_update_norm: Optional[float] = None) -> None:
+        prefix = f"train_signal/{group}"
+        items: list[tuple[str, float]] = []
+        if grad_norm is not None:
+            items.append((f"{prefix}/grad_norm", grad_norm))
+        if param_norm is not None:
+            items.append((f"{prefix}/param_norm", param_norm))
+        if grad_to_param is not None:
+            items.append((f"{prefix}/grad_to_param", grad_to_param))
+        if param_count is not None:
+            items.append((f"{prefix}/param_count", float(param_count)))
+        if pre_param_norm is not None:
+            items.append((f"{prefix}/pre_param_norm", pre_param_norm))
+        if update_norm is not None:
+            items.append((f"{prefix}/update_norm", update_norm))
+        if update_to_pre_param is not None:
+            items.append((f"{prefix}/update_to_pre_param", update_to_pre_param))
+        if optimizer_update_norm is not None:
+            items.append((f"{prefix}/optimizer_update_norm", optimizer_update_norm))
+        if optimizer_update_to_pre_param is not None:
+            items.append((f"{prefix}/optimizer_update_to_pre_param", optimizer_update_to_pre_param))
+        if weight_decay_update_norm is not None:
+            items.append((f"{prefix}/weight_decay_update_norm", weight_decay_update_norm))
+        if items:
+            self.insert_many(step, items)
+
     def log_router_layer(self, step: int, layer_idx: int, *,
                          cv: Optional[float] = None,
                          entropy: Optional[float] = None,
                          experts_active: Optional[int] = None,
                          bias_range: Optional[float] = None,
-                         max_load: Optional[float] = None) -> None:
+                         max_load: Optional[float] = None,
+                         min_load: Optional[float] = None,
+                         p10_load: Optional[float] = None,
+                         p50_load: Optional[float] = None,
+                         p90_load: Optional[float] = None,
+                         importance_cv: Optional[float] = None,
+                         importance_entropy: Optional[float] = None,
+                         max_importance: Optional[float] = None,
+                         min_importance: Optional[float] = None,
+                         p10_importance: Optional[float] = None,
+                         p50_importance: Optional[float] = None,
+                         p90_importance: Optional[float] = None) -> None:
         prefix = f"router/layer_{layer_idx:02d}"
         items: list[tuple[str, float]] = []
         if cv is not None:
@@ -809,6 +878,28 @@ class MetricsWriter:
             items.append((f"{prefix}/bias_range", bias_range))
         if max_load is not None:
             items.append((f"{prefix}/max_load", max_load))
+        if min_load is not None:
+            items.append((f"{prefix}/min_load", min_load))
+        if p10_load is not None:
+            items.append((f"{prefix}/p10_load", p10_load))
+        if p50_load is not None:
+            items.append((f"{prefix}/p50_load", p50_load))
+        if p90_load is not None:
+            items.append((f"{prefix}/p90_load", p90_load))
+        if importance_cv is not None:
+            items.append((f"{prefix}/importance_cv", importance_cv))
+        if importance_entropy is not None:
+            items.append((f"{prefix}/importance_entropy", importance_entropy))
+        if max_importance is not None:
+            items.append((f"{prefix}/max_importance", max_importance))
+        if min_importance is not None:
+            items.append((f"{prefix}/min_importance", min_importance))
+        if p10_importance is not None:
+            items.append((f"{prefix}/p10_importance", p10_importance))
+        if p50_importance is not None:
+            items.append((f"{prefix}/p50_importance", p50_importance))
+        if p90_importance is not None:
+            items.append((f"{prefix}/p90_importance", p90_importance))
         if items:
             self.insert_many(step, items)
 
@@ -965,19 +1056,78 @@ def stop_metrics(ctx: Optional[MetricsContext]) -> None:
         pass
 
 
+def collect_param_group_stats(model: torch.nn.Module):
+    """Return global grad/param norms for dense, router, and expert groups."""
+    named_params = [(name, p) for name, p in model.named_parameters() if p.requires_grad]
+    if not named_params:
+        return {}
+
+    expert_ids: set[int] = set()
+    if hasattr(model, "param_sets"):
+        try:
+            expert_params, _ = model.param_sets()  # type: ignore[attr-defined]
+            expert_ids = {id(p) for p in expert_params}
+        except Exception:
+            expert_ids = set()
+
+    device = named_params[0][1].device
+    # Per group: grad_sq, param_sq, param_count
+    acc = torch.zeros(9, device=device, dtype=torch.float64)
+    group_index = {"dense": 0, "router": 1, "expert": 2}
+
+    for name, p in named_params:
+        if id(p) in expert_ids:
+            group = "expert"
+        elif "router" in name:
+            group = "router"
+        else:
+            group = "dense"
+        base = group_index[group] * 3
+        data = p.detach().float()
+        acc[base + 1] += (data * data).sum(dtype=torch.float64)
+        acc[base + 2] += float(p.numel())
+        if p.grad is not None:
+            grad = p.grad.detach().float()
+            acc[base + 0] += (grad * grad).sum(dtype=torch.float64)
+
+    if dist.is_available() and dist.is_initialized():
+        dist.all_reduce(acc, op=dist.ReduceOp.SUM)
+
+    out = {}
+    for group, idx in group_index.items():
+        base = idx * 3
+        grad_sq = float(acc[base + 0].item())
+        param_sq = float(acc[base + 1].item())
+        param_count = int(round(float(acc[base + 2].item())))
+        grad_norm = math.sqrt(grad_sq) if grad_sq > 0.0 else 0.0
+        param_norm = math.sqrt(param_sq) if param_sq > 0.0 else 0.0
+        grad_to_param = (grad_norm / param_norm) if param_norm > 0.0 else None
+        out[group] = {
+            'grad_norm': grad_norm,
+            'param_norm': param_norm,
+            'grad_to_param': grad_to_param,
+            'param_count': param_count,
+        }
+    return out
+
+
 def collect_router_stats(model: torch.nn.Module):
     """Return (per_layer_stats, agg_stats) for router metrics.
 
-    per_layer_stats: list of dict(li, cv, entropy, max_load, bias_range)
-    agg_stats: dict(mean_cv, std_cv, mean_entropy, min_entropy, dead_experts_count)
+    per_layer_stats: list of dict(li, cv, entropy, load quantiles, bias_range)
+    agg_stats: dict(mean_cv, std_cv, mean_entropy, min_entropy, dead_experts_count, ...)
     """
     layers = [blk.ffn for blk in getattr(model, "blocks") if hasattr(blk, "ffn") and hasattr(blk.ffn, "last_aux_loss")]
     per = []
     cvs, ents, maxps = [], [], []
+    minps, p10s, p50s, p90s = [], [], [], []
+    importance_cvs, importance_ents, importance_maxps = [], [], []
+    importance_minps, importance_p10s, importance_p50s, importance_p90s = [], [], [], []
     dead_total = 0
     experts_active_list = []
     for li, ffn in enumerate(layers):
-        cv = ent = mx = None
+        cv = ent = mx = mn = p10 = p50 = p90 = None
+        imp_cv = imp_ent = imp_mx = imp_mn = imp_p10 = imp_p50 = imp_p90 = None
         bmin = bmax = None
         experts_active = None
         if hasattr(ffn, "last_loads"):
@@ -985,12 +1135,28 @@ def collect_router_stats(model: torch.nn.Module):
             m = l.mean()
             if m.item() != 0.0:
                 cv = (l.std(unbiased=False) / m * 100.0).item()
+            mn = (l.min() * 100.0).item()
+            p10 = (torch.quantile(l, 0.10) * 100.0).item()
+            p50 = (torch.quantile(l, 0.50) * 100.0).item()
+            p90 = (torch.quantile(l, 0.90) * 100.0).item()
             mx = (l.max() * 100.0).item()
             p = (l / l.sum().clamp_min(1e-9)).clamp_min(1e-12)
             ent = float((-p * p.log()).sum().item())
             dead_total += int((l <= 0).sum().item())
             experts_active = int((l > 0).sum().item())
             experts_active_list.append(float(experts_active))
+        if hasattr(ffn, "last_importance") and ffn.last_importance is not None:
+            imp = ffn.last_importance.detach().float()
+            imp_mean = imp.mean()
+            if imp_mean.item() != 0.0:
+                imp_cv = (imp.std(unbiased=False) / imp_mean * 100.0).item()
+            imp_mn = (imp.min() * 100.0).item()
+            imp_p10 = (torch.quantile(imp, 0.10) * 100.0).item()
+            imp_p50 = (torch.quantile(imp, 0.50) * 100.0).item()
+            imp_p90 = (torch.quantile(imp, 0.90) * 100.0).item()
+            imp_mx = (imp.max() * 100.0).item()
+            imp_p = (imp / imp.sum().clamp_min(1e-12)).clamp_min(1e-12)
+            imp_ent = float((-imp_p * imp_p.log()).sum().item())
         if hasattr(ffn, "router") and hasattr(ffn.router, "bias"):
             b = ffn.router.bias.detach().float()
             bmin = float(b.min().item())
@@ -1001,11 +1167,44 @@ def collect_router_stats(model: torch.nn.Module):
             ents.append(ent)
         if mx is not None:
             maxps.append(mx)
+        if mn is not None:
+            minps.append(mn)
+        if p10 is not None:
+            p10s.append(p10)
+        if p50 is not None:
+            p50s.append(p50)
+        if p90 is not None:
+            p90s.append(p90)
+        if imp_cv is not None:
+            importance_cvs.append(imp_cv)
+        if imp_ent is not None:
+            importance_ents.append(imp_ent)
+        if imp_mx is not None:
+            importance_maxps.append(imp_mx)
+        if imp_mn is not None:
+            importance_minps.append(imp_mn)
+        if imp_p10 is not None:
+            importance_p10s.append(imp_p10)
+        if imp_p50 is not None:
+            importance_p50s.append(imp_p50)
+        if imp_p90 is not None:
+            importance_p90s.append(imp_p90)
         per.append({
             'layer': li,
             'cv': cv,
             'entropy': ent,
             'max_load': mx,
+            'min_load': mn,
+            'p10_load': p10,
+            'p50_load': p50,
+            'p90_load': p90,
+            'importance_cv': imp_cv,
+            'importance_entropy': imp_ent,
+            'max_importance': imp_mx,
+            'min_importance': imp_mn,
+            'p10_importance': imp_p10,
+            'p50_importance': imp_p50,
+            'p90_importance': imp_p90,
             'bias_min': bmin,
             'bias_max': bmax,
             'experts_active': experts_active,
@@ -1018,6 +1217,18 @@ def collect_router_stats(model: torch.nn.Module):
         'min_entropy': (min(ents) if ents else None),
         'dead_experts_count': float(dead_total),
         'experts_active_mean': (sum(experts_active_list) / len(experts_active_list)) if experts_active_list else None,
+        'mean_min_load': (sum(minps) / len(minps)) if minps else None,
+        'mean_p10_load': (sum(p10s) / len(p10s)) if p10s else None,
+        'mean_p50_load': (sum(p50s) / len(p50s)) if p50s else None,
+        'mean_p90_load': (sum(p90s) / len(p90s)) if p90s else None,
+        'mean_max_load': (sum(maxps) / len(maxps)) if maxps else None,
+        'mean_importance_cv': (sum(importance_cvs) / len(importance_cvs)) if importance_cvs else None,
+        'mean_importance_entropy': (sum(importance_ents) / len(importance_ents)) if importance_ents else None,
+        'mean_min_importance': (sum(importance_minps) / len(importance_minps)) if importance_minps else None,
+        'mean_p10_importance': (sum(importance_p10s) / len(importance_p10s)) if importance_p10s else None,
+        'mean_p50_importance': (sum(importance_p50s) / len(importance_p50s)) if importance_p50s else None,
+        'mean_p90_importance': (sum(importance_p90s) / len(importance_p90s)) if importance_p90s else None,
+        'mean_max_importance': (sum(importance_maxps) / len(importance_maxps)) if importance_maxps else None,
     }
     return per, agg
 
@@ -1105,6 +1316,10 @@ def log_training_step(step: int,
     if not do_log:
         return out
 
+    signal_stats = collect_param_group_stats(model)
+    for group, extra in pop_train_signal_overrides().items():
+        signal_stats.setdefault(group, {}).update(extra)
+
     # Persist core metrics (rank 0 only)
     rank = 0
     try:
@@ -1162,6 +1377,21 @@ def log_training_step(step: int,
                 memory_current_alloc_gib=out.get('alloc_gib'),
                 memory_max_alloc_gib=out.get('max_alloc_gib'),
             )
+            for group, stats in signal_stats.items():
+                ctx.writer.log_train_signal_group(
+                    step,
+                    group,
+                    grad_norm=stats.get('grad_norm'),
+                    param_norm=stats.get('param_norm'),
+                    grad_to_param=stats.get('grad_to_param'),
+                    param_count=stats.get('param_count'),
+                    pre_param_norm=stats.get('pre_param_norm'),
+                    update_norm=stats.get('update_norm'),
+                    update_to_pre_param=stats.get('update_to_pre_param'),
+                    optimizer_update_norm=stats.get('optimizer_update_norm'),
+                    optimizer_update_to_pre_param=stats.get('optimizer_update_to_pre_param'),
+                    weight_decay_update_norm=stats.get('weight_decay_update_norm'),
+                )
             # Persist per-dtype achieved TFLOP/s (rank 0 only)
             items = []
             if tflops_fp8_ach is not None:
@@ -1191,6 +1421,17 @@ def log_training_step(step: int,
                     experts_active=item.get('experts_active'),
                     bias_range=(bmax - bmin) if (bmin is not None and bmax is not None) else None,
                     max_load=mx,
+                    min_load=item.get('min_load'),
+                    p10_load=item.get('p10_load'),
+                    p50_load=item.get('p50_load'),
+                    p90_load=item.get('p90_load'),
+                    importance_cv=item.get('importance_cv'),
+                    importance_entropy=item.get('importance_entropy'),
+                    max_importance=item.get('max_importance'),
+                    min_importance=item.get('min_importance'),
+                    p10_importance=item.get('p10_importance'),
+                    p50_importance=item.get('p50_importance'),
+                    p90_importance=item.get('p90_importance'),
                 )
             if any(v is not None for v in agg.values()):
                 ctx.writer.log_router_agg(
@@ -1201,6 +1442,18 @@ def log_training_step(step: int,
                     min_entropy=agg['min_entropy'],
                     dead_experts_count=agg['dead_experts_count'],
                     experts_active_mean=agg.get('experts_active_mean'),
+                    mean_min_load=agg.get('mean_min_load'),
+                    mean_p10_load=agg.get('mean_p10_load'),
+                    mean_p50_load=agg.get('mean_p50_load'),
+                    mean_p90_load=agg.get('mean_p90_load'),
+                    mean_max_load=agg.get('mean_max_load'),
+                    mean_importance_cv=agg.get('mean_importance_cv'),
+                    mean_importance_entropy=agg.get('mean_importance_entropy'),
+                    mean_min_importance=agg.get('mean_min_importance'),
+                    mean_p10_importance=agg.get('mean_p10_importance'),
+                    mean_p50_importance=agg.get('mean_p50_importance'),
+                    mean_p90_importance=agg.get('mean_p90_importance'),
+                    mean_max_importance=agg.get('mean_max_importance'),
                 )
         except Exception:
             pass

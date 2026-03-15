@@ -248,6 +248,7 @@ extern "C" {
       float weight_decay, float eps,
       float step_size, float inv_bias_correction2_sqrt,
       uint32_t seed, uint32_t step,
+      int enable_nvfp4_resonance_dither,
       cudaStream_t stream);
 	  cudaError_t build_grouped_gemm_metadata(
 	      const int32_t* offs, int E,
@@ -918,6 +919,7 @@ PYBIND11_MODULE(rdep, m) {
          float weight_decay, float eps,
          float step_size, float inv_bias_correction2_sqrt,
          uint32_t seed, uint32_t step,
+         int enable_nvfp4_resonance_dither,
          py::object stream) {
         auto err = expert_adamw_step(
             profile,
@@ -934,6 +936,7 @@ PYBIND11_MODULE(rdep, m) {
             weight_decay, eps,
             step_size, inv_bias_correction2_sqrt,
             seed, step,
+            enable_nvfp4_resonance_dither,
             to_stream(stream));
         if (err != cudaSuccess) throw std::runtime_error("expert_adamw_step failed");
       },
@@ -966,6 +969,7 @@ PYBIND11_MODULE(rdep, m) {
       py::arg("inv_bias_correction2_sqrt"),
       py::arg("seed"),
       py::arg("step"),
+      py::arg("enable_nvfp4_resonance_dither"),
       py::arg("stream") = py::none(),
       "Fused expert AdamW update + packed weight cache emission (FP8/NVFP4)");
 

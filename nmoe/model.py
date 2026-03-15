@@ -119,12 +119,21 @@ class MoE(nn.Module):
     self.W2 = nn.Parameter(torch.empty(self.n_local, self.moe_inter_dim, self.dim, dtype=torch.bfloat16))
     self._dtype = getattr(cfg, 'dtype', 'nvfp4')
     self._use_blockscaled = self._dtype in ('fp8', 'nvfp4')
+    self._blockscaled_forward_ablation = str(getattr(cfg, 'blockscaled_forward_ablation', 'off') or 'off').strip().lower()
+    if self._blockscaled_forward_ablation not in ('off', 'w13_bf16', 'stage1_bf16', 'full_bf16', 'w13_fp8', 'w2_fp8', 'stage1_fp8', 'full_fp8'):
+      raise ValueError(
+        f"blockscaled_forward_ablation must be one of ('off', 'w13_bf16', 'stage1_bf16', 'full_bf16', 'w13_fp8', 'w2_fp8', 'stage1_fp8', 'full_fp8'), got {self._blockscaled_forward_ablation!r}"
+      )
     self._W_cache = None  # QuantizedWeightsFused cache, refreshed after each optimizer step
     n_shared = getattr(cfg, 'n_shared_experts', 0)
     activation = getattr(cfg, 'activation', 'swiglu')
     self._shared = MLP(self.dim, n_shared * self.moe_inter_dim, activation=activation) if n_shared else None
     self.last_loads = None
+    self.last_importance = None
     self.last_aux_loss = None
+    self.aux_loss_alpha = float(getattr(cfg, 'aux_loss_alpha', 0.0))
+    if self._use_blockscaled:
+      self.register_load_state_dict_post_hook(self._invalidate_weight_cache_post_load)
 
   def init_weights(self, init_std: float = 0.02):
     nn.init.trunc_normal_(self.W1, mean=0.0, std=init_std)
@@ -147,6 +156,17 @@ class MoE(nn.Module):
       W3 = self.W3 if self.W3 is not None else self.W1  # dummy for relu_squared
       self._W_cache = quantize_weights(self.W1, W3, self.W2, profile=self._dtype)
 
+  @torch.no_grad()
+  def invalidate_weight_cache(self) -> bool:
+    had_cache = self._W_cache is not None
+    self._W_cache = None
+    return had_cache
+
+  @torch.no_grad()
+  def _invalidate_weight_cache_post_load(self, module, incompatible_keys):
+    del incompatible_keys
+    module.invalidate_weight_cache()
+
   @record_function("moe")
   def forward(self, x: torch.Tensor) -> torch.Tensor:
     X = x.view(-1, x.size(-1))
@@ -163,19 +183,24 @@ class MoE(nn.Module):
     # Differentiable through g (router weights), provides gradient signal for balance.
     importance = torch.zeros(E, device=g.device, dtype=torch.float32)
     importance.scatter_add_(0, eid.reshape(-1), g.reshape(-1).float())
+    self.last_importance = importance
     load_frac = loads / loads.sum().clamp(min=1.0)
     importance_frac = importance / importance.sum().clamp(min=1e-12)
     self.last_aux_loss = E * (importance_frac * load_frac).sum()
 
     W3 = self.W3 if self.W3 is not None else self.W1  # dummy for relu_squared
     if self._use_blockscaled:
-      if self._W_cache is None:
+      cache = self._W_cache
+      if self._blockscaled_forward_ablation == 'off' and cache is None:
         # Blockscaled kernels are SM100-only; keep import lazy so bf16/dense runs
         # don't depend on blockscaled stack.
         from nmoe.blockscaled.grouped import quantize_weights
-        self._W_cache = quantize_weights(self.W1, W3, self.W2, profile=self._dtype)
+        cache = quantize_weights(self.W1, W3, self.W2, profile=self._dtype)
+        self._W_cache = cache
 
-      out = self._rdep.moe_blockscaled(X.bfloat16(), eid, g, self.W1, W3, self.W2, self._W_cache, self._activation)
+      out = self._rdep.moe_blockscaled(
+        X.bfloat16(), eid, g, self.W1, W3, self.W2, cache, self._activation, self._blockscaled_forward_ablation
+      )
     else:
       out = self._rdep.moe_bf16(X.bfloat16(), eid, g, self.W1, W3, self.W2, self._activation)
 
@@ -308,11 +333,15 @@ class Transformer(nn.Module):
       moe_layers = [blk.ffn for blk in self.blocks if isinstance(getattr(blk, 'ffn', None), MoE)]
       if moe_layers:
         loads = torch.stack([m.last_loads for m in moe_layers], dim=0)
+        importance = torch.stack([m.last_importance for m in moe_layers], dim=0)
         if dist.is_available() and dist.is_initialized():
           dist.all_reduce(loads, op=dist.ReduceOp.SUM)
+          dist.all_reduce(importance, op=dist.ReduceOp.SUM)
         loads = loads / loads.sum(dim=-1, keepdim=True).clamp_min(1.0)
-        for m, l in zip(moe_layers, loads):
+        importance = importance / importance.sum(dim=-1, keepdim=True).clamp_min(1e-12)
+        for m, l, imp in zip(moe_layers, loads, importance):
           m.last_loads = l
+          m.last_importance = imp
 
     with record_function("norm_f"):
       x = self.norm(x)

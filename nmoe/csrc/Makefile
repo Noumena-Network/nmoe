@@ -192,8 +192,7 @@ $(RDEP_TARGET): $(RDEP_CUDA_OBJS) $(DLINK_OBJ) $(RDEP_CPP_OBJS)
 
 $(GPU_TARGET): $(GPU_OBJS)
 	$(CXX) -o $@ $^ -shared \
-		-L/usr/lib/x86_64-linux-gnu -l:libnvidia-ml.so.1 \
-		-Wl,-rpath,/usr/lib/x86_64-linux-gnu
+		-ldl
 	@echo ""
 	@echo "Built $(GPU_TARGET)"
 	@echo ""

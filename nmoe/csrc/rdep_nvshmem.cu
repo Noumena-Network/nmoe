@@ -918,7 +918,7 @@ __global__ void k_dispatch_hybrid_bf16(
                 if (is_remote_gpu) {
                     int4* meta_dst = reinterpret_cast<int4*>(&meta_buf[slot_r]);
                     int4 meta_val = *reinterpret_cast<const int4*>(&m);
-                    st_na_v4_s32(meta_dst, meta_val);
+                    st_relaxed_sys_v4_s32(meta_dst, meta_val);
                 } else {
                     meta_buf[slot_r] = m;
                 }
@@ -937,7 +937,7 @@ __global__ void k_dispatch_hybrid_bf16(
                         st_na_v2_s32(d, v);
                     } else {
                         for (int hh = h; hh < H && hh < h + 4; hh++) {
-                            st_na_relaxed_gpu_b16(dst + hh, reinterpret_cast<const uint16_t*>(row)[hh]);
+                            st_relaxed_sys_b16(dst + hh, reinterpret_cast<const uint16_t*>(row)[hh]);
                         }
                     }
                 }
@@ -999,7 +999,7 @@ __global__ void k_forward_nvshmem_dispatch_to_ipc_bf16(
             if (dest_nvl != nvl_rank) {
                 int4* meta_dst = reinterpret_cast<int4*>(&meta_buf[slot_r]);
                 int4 meta_val = *reinterpret_cast<const int4*>(&out_m);
-                st_na_v4_s32(meta_dst, meta_val);
+                st_relaxed_sys_v4_s32(meta_dst, meta_val);
             } else {
                 meta_buf[slot_r] = out_m;
             }
@@ -1021,7 +1021,7 @@ __global__ void k_forward_nvshmem_dispatch_to_ipc_bf16(
                 for (int hh = h; hh < H && hh < h + 4; hh++) {
                     uint16_t u = src[hh];
                     if (remote_gpu) {
-                        st_na_relaxed_gpu_b16(dst + hh, u);
+                        st_relaxed_sys_b16(dst + hh, u);
                     } else {
                         dst[hh] = u;
                     }
@@ -1185,7 +1185,7 @@ __global__ void k_dispatch_hybrid_blockscaled(
                 if (is_remote_gpu) {
                     int4* meta_dst = reinterpret_cast<int4*>(&meta_buf[slot_r]);
                     int4 meta_val = *reinterpret_cast<const int4*>(&m);
-                    st_na_v4_s32(meta_dst, meta_val);
+                    st_relaxed_sys_v4_s32(meta_dst, meta_val);
                 } else {
                     meta_buf[slot_r] = m;
                 }
@@ -1209,7 +1209,7 @@ __global__ void k_dispatch_hybrid_blockscaled(
                 float inv_scale = e8m0_inv_decode_to_f32(scale_byte);
 
                 if (lane == 0) {
-                    if (is_remote_gpu) st_na_relaxed_gpu_b8(dst_sfa + blk, scale_byte);
+                    if (is_remote_gpu) st_relaxed_sys_b8(dst_sfa + blk, scale_byte);
                     else dst_sfa[blk] = scale_byte;
                 }
 
@@ -1220,7 +1220,7 @@ __global__ void k_dispatch_hybrid_blockscaled(
                     if ((lane & 1) == 0 && lane < blk_size) {
                         uint16_t packed = (uint16_t)q8 | ((uint16_t)q8_neighbor << 8);
                         int pack_idx = blk * (SF_VEC / 2) + (lane / 2);
-                        if (is_remote_gpu) st_na_relaxed_gpu_b16(dst_pack + pack_idx, packed);
+                        if (is_remote_gpu) st_relaxed_sys_b16(dst_pack + pack_idx, packed);
                         else dst_pack[pack_idx] = packed;
                     }
                 } else {
@@ -1231,7 +1231,7 @@ __global__ void k_dispatch_hybrid_blockscaled(
                     if ((lane & 3) == 0 && lane < blk_size) {
                         uint16_t packed = to_fp4x4(qf0, qf1, qf2, qf3);
                         int pack_idx = blk * (SF_VEC / 4) + (lane / 4);
-                        if (is_remote_gpu) st_na_relaxed_gpu_b16(dst_pack + pack_idx, packed);
+                        if (is_remote_gpu) st_relaxed_sys_b16(dst_pack + pack_idx, packed);
                         else dst_pack[pack_idx] = packed;
                     }
                 }
@@ -1930,7 +1930,7 @@ __global__ void k_return_scatter_hybrid_bf16(
                 Meta mr{m.row_id, 0, m.gate};
                 int4* meta_dst = reinterpret_cast<int4*>(&meta_buf[slot_r]);
                 int4 meta_val = *reinterpret_cast<const int4*>(&mr);
-                st_na_v4_s32(meta_dst, meta_val);
+                st_relaxed_sys_v4_s32(meta_dst, meta_val);
             }
 
             // Write BF16 payload via IPC
@@ -1944,7 +1944,7 @@ __global__ void k_return_scatter_hybrid_bf16(
                     st_na_v2_s32(d, v);
                 } else {
                     for (int hh = h; hh < H && hh < h + 4; hh++) {
-                        st_na_relaxed_gpu_b16(dst + hh, reinterpret_cast<const uint16_t*>(y_row)[hh]);
+                        st_relaxed_sys_b16(dst + hh, reinterpret_cast<const uint16_t*>(y_row)[hh]);
                     }
                 }
             }
@@ -2050,7 +2050,7 @@ __global__ void k_return_scatter_hybrid_bf16_from_pad(
                 Meta mr{m.row_id, 0, m.gate};
                 int4* meta_dst = reinterpret_cast<int4*>(&meta_buf[slot_r]);
                 int4 meta_val = *reinterpret_cast<const int4*>(&mr);
-                st_na_v4_s32(meta_dst, meta_val);
+                st_relaxed_sys_v4_s32(meta_dst, meta_val);
             }
 
             uint16_t* dst = y_buf + (int64_t)slot_r * Ha;
@@ -2061,7 +2061,7 @@ __global__ void k_return_scatter_hybrid_bf16_from_pad(
                     st_na_v2_s32(d, v);
                 } else {
                     for (int hh = h; hh < H && hh < h + 4; hh++) {
-                        st_na_relaxed_gpu_b16(dst + hh, reinterpret_cast<const uint16_t*>(y_row)[hh]);
+                        st_relaxed_sys_b16(dst + hh, reinterpret_cast<const uint16_t*>(y_row)[hh]);
                     }
                 }
             }
@@ -2116,7 +2116,7 @@ __global__ void k_forward_nvshmem_return_to_ipc_bf16(
             if (dest_nvl != nvl_rank) {
                 int4* meta_dst = reinterpret_cast<int4*>(&meta_buf[slot_r]);
                 int4 meta_val = *reinterpret_cast<const int4*>(&out_m);
-                st_na_v4_s32(meta_dst, meta_val);
+                st_relaxed_sys_v4_s32(meta_dst, meta_val);
             } else {
                 meta_buf[slot_r] = out_m;
             }
@@ -2138,7 +2138,7 @@ __global__ void k_forward_nvshmem_return_to_ipc_bf16(
                 for (int hh = h; hh < H && hh < h + 4; hh++) {
                     uint16_t u = src[hh];
                     if (remote_gpu) {
-                        st_na_relaxed_gpu_b16(dst + hh, u);
+                        st_relaxed_sys_b16(dst + hh, u);
                     } else {
                         dst[hh] = u;
                     }
@@ -2576,7 +2576,7 @@ __global__ void k_stage_dy_push_hybrid(
                     for (int hh = h; hh < H && hh < h + 4; hh++) {
                         uint16_t u = reinterpret_cast<const uint16_t*>(row)[hh];
                         if (remote_gpu) {
-                            st_na_relaxed_gpu_b16(dst + hh, u);
+                            st_relaxed_sys_b16(dst + hh, u);
                         } else {
                             dst[hh] = u;
                         }
@@ -2852,7 +2852,7 @@ __global__ void k_send_dx_tokslot_hybrid(
                     for (int hh = h; hh < H && hh < h + 4; hh++) {
                         uint16_t u = reinterpret_cast<const uint16_t*>(row)[hh];
                         if (remote_gpu) {
-                            st_na_relaxed_gpu_b16(dst + hh, u);
+                            st_relaxed_sys_b16(dst + hh, u);
                         } else {
                             dst[hh] = u;
                         }

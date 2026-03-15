@@ -1,0 +1,742 @@
+{
+  "post": "0003",
+  "title": "The Speedrun Loop",
+  "evidence_tier": "internal_repro",
+  "status": "complete",
+  "generated_at_utc": "2026-03-12T17:34:37Z",
+  "summary": "Speedrun-loop receipts: the pinned public June 2024 dense anchor, the historical January calibration and throughput surfaces, and the completed March 2026 loss-plus-CORE closure matrix across dense / MoE-64 / MoE-256 and bf16 / fp8 / nvfp4.",
+  "runs": {
+    "dense_sdpa": "run_1767924490_732716",
+    "moe64_bf16": "run_1767932268_736761",
+    "ultra256_bf16": "run_1767976973_748979"
+  },
+  "external_anchor": {
+    "repo": "KellerJordan/modded-nanogpt",
+    "recipe_commit": "b6b0a0d36e6f1758a8d14d5fcd5f15ca5d19b891",
+    "public_record_ref": "HEAD",
+    "public_record_dir": "records/track_1_short/2024-06-06_AdamW",
+    "public_readme_path": "records/track_1_short/2024-06-06_AdamW/README.md",
+    "public_log_path": "records/track_1_short/2024-06-06_AdamW/f66d43d7-e449-4029-8adf-e8537bab49ea.log",
+    "anchor_step": 9536,
+    "anchor_metric": "tel",
+    "anchor_valid_loss": 3.275959,
+    "public_recipe_note": "lr=0.0018, warmup=250, warmdown=2000, betas=(0.9, 0.95) IIRC",
+    "note": "The code commit gives the June 2024 recipe neighborhood; the preserved public log gives the exact numerical anchor used in the post."
+  },
+  "comparison_contract": {
+    "clean_pair": {
+      "models": [
+        "dense_sdpa",
+        "moe64_bf16"
+      ],
+      "steps": 9536,
+      "tokens_per_step": 524288,
+      "batch_size": 256,
+      "seq_len": 2048,
+      "optimizer": "AdamW",
+      "lr": 0.0018,
+      "weight_decay": 0.1,
+      "betas": [
+        0.9,
+        0.95
+      ],
+      "swap_axis": "active_ffn_width_per_token",
+      "active_width_dense": 3072,
+      "active_width_moe64": 3072
+    },
+    "exploratory_slice": {
+      "model": "ultra256_bf16",
+      "published_step": 10752,
+      "run_contract_steps": 32800,
+      "scope": "longer iso-tokens/expert run; published point is exploratory rather than part of the clean 9536-step pair"
+    },
+    "closure_matrix_20260312": {
+      "models": [
+        "dense",
+        "moe64",
+        "moe256"
+      ],
+      "dtypes": [
+        "bf16",
+        "fp8",
+        "nvfp4"
+      ],
+      "steps_max": 9536,
+      "tokens_per_step": 524288,
+      "batch_size": 256,
+      "seq_len": 2048,
+      "optimizer": "AdamW",
+      "lr": 0.0018,
+      "weight_decay": 0.1,
+      "betas": [
+        0.9,
+        0.95
+      ],
+      "warmup_steps": 256,
+      "warmdown_steps": 2048,
+      "target_loss": 3.28,
+      "eval_enabled": true,
+      "eval_tasks": "core",
+      "swap_axis": "active_ffn_width_per_token",
+      "active_width_dense": 3072,
+      "active_width_moe64": 3072,
+      "active_width_moe256": 3072,
+      "note": "dense uses small_dense_sdpa.toml; MoE-64 uses small_moe.toml with dtype overrides; MoE-256 uses small_moe_ultra.toml overridden down to the fixed 9536-step June-style horizon."
+    }
+  },
+  "measurements": {
+    "public_anchor": {
+      "step": 9536,
+      "valid_loss": 3.275959,
+      "source": "external_anchor.public_log_path"
+    },
+    "dense_sdpa": {
+      "step": 9536,
+      "valid_loss_exact": 3.4806723594665527,
+      "valid_loss_post_rounded": 3.4807,
+      "source_artifacts": [
+        "blog_artifacts/0003_dense_sdpa_loss.json",
+        "metrics/run_1767924490_732716/rank_0.duckdb",
+        "static/figures/dense_calibration_curve.svg"
+      ]
+    },
+    "gap_vs_public_anchor": {
+      "step": 9536,
+      "delta_valid_loss_exact": 0.2047133594665529,
+      "delta_valid_loss_post_rounded": 0.205
+    },
+    "moe64_bf16": {
+      "step": 9536,
+      "valid_loss_exact": 3.431931734085083,
+      "valid_loss_post_rounded": 3.4319,
+      "delta_vs_dense_exact": -0.04874062538146973,
+      "delta_vs_dense_post_rounded": -0.049,
+      "router_mean_cv_exact": 86.99082842740145,
+      "router_mean_entropy_exact": 3.9127983179959385,
+      "source_artifacts": [
+        "blog_artifacts/0003_moe64_bf16_loss.json",
+        "blog_artifacts/0003_moe64_bf16_router_cv.json",
+        "blog_artifacts/0003_moe64_bf16_router_entropy.json",
+        "metrics/run_1767932268_736761/rank_0.duckdb",
+        "static/figures/speedrun_dense_moe_ultra_loss.svg"
+      ]
+    },
+    "ultra256_bf16_slice": {
+      "step": 10752,
+      "valid_loss_exact": 3.2799384593963623,
+      "valid_loss_post_rounded": 3.2799,
+      "delta_vs_dense_exact": -0.20073390007019043,
+      "delta_vs_dense_post_rounded": -0.201,
+      "scope": "exploratory_longer_run_slice",
+      "source_artifacts": [
+        "blog_artifacts/0003_ultra256_bf16_loss.json",
+        "metrics/run_1767976973_748979/rank_0.duckdb",
+        "static/figures/speedrun_dense_moe_ultra_loss.svg"
+      ]
+    },
+    "throughput_medians_steps_1000_7000": {
+      "window": {
+        "step_start": 1000,
+        "step_end": 7000,
+        "count": 61
+      },
+      "dense_sdpa": {
+        "tokens_per_s_gpu_median": 93019.88557814731,
+        "tokens_per_s_gpu_avg": 93794.16962578647,
+        "ms_per_step_median": 704.5375254191458,
+        "tflops_median": 137.4484451738877
+      },
+      "moe64_bf16": {
+        "tokens_per_s_gpu_median": 47929.62507283819,
+        "tokens_per_s_gpu_avg": 48056.1098734755,
+        "ms_per_step_median": 1367.3380482406353,
+        "tflops_median": 70.97746489359179
+      },
+      "ultra256_bf16": {
+        "tokens_per_s_gpu_median": 46671.23102833263,
+        "tokens_per_s_gpu_avg": 47345.79646444087,
+        "ms_per_step_median": 1404.2055149609225,
+        "tflops_median": 69.62321350388423
+      },
+      "source_artifacts": [
+        "blog_artifacts/0003_dense_sdpa_throughput.json",
+        "blog_artifacts/0003_moe64_bf16_throughput.json",
+        "blog_artifacts/0003_ultra256_bf16_throughput.json",
+        "metrics/run_1767924490_732716/rank_0.duckdb",
+        "metrics/run_1767932268_736761/rank_0.duckdb",
+        "metrics/run_1767976973_748979/rank_0.duckdb",
+        "static/figures/speedrun_throughput_overlay.svg"
+      ]
+    },
+    "tokens_per_routed_expert": {
+      "formula": "tokens_seen * K / E",
+      "moe64_full_horizon": {
+        "tokens_seen": 4999610368,
+        "K": 6,
+        "E": 64,
+        "tokens_per_expert": 468713472.0
+      },
+      "moe256_full_horizon": {
+        "tokens_seen": 4999610368,
+        "K": 7,
+        "E": 256,
+        "tokens_per_expert": 136708916.0
+      },
+      "super4096_reference": {
+        "tokens_seen_approx": 6329000000,
+        "K": 7,
+        "E": 4096,
+        "tokens_per_expert_approx": 10800000.0
+      }
+    },
+    "closure_matrix_20260312": {
+      "contract": {
+        "models": [
+          "dense",
+          "moe64",
+          "moe256"
+        ],
+        "dtypes": [
+          "bf16",
+          "fp8",
+          "nvfp4"
+        ],
+        "steps_max": 9536,
+        "tokens_per_step": 524288,
+        "batch_size": 256,
+        "seq_len": 2048,
+        "optimizer": "AdamW",
+        "lr": 0.0018,
+        "weight_decay": 0.1,
+        "betas": [
+          0.9,
+          0.95
+        ],
+        "warmup_steps": 256,
+        "warmdown_steps": 2048,
+        "target_loss": 3.28,
+        "eval_enabled": true,
+        "eval_tasks": "core",
+        "swap_axis": "active_ffn_width_per_token",
+        "active_width_dense": 3072,
+        "active_width_moe64": 3072,
+        "active_width_moe256": 3072,
+        "note": "dense uses small_dense_sdpa.toml; MoE-64 uses small_moe.toml with dtype overrides; MoE-256 uses small_moe_ultra.toml overridden down to the fixed 9536-step June-style horizon."
+      },
+      "results": {
+        "bf16": {
+          "dense": {
+            "stop_step": 8320,
+            "stop_kind": "target_reached",
+            "final_valid_loss": 3.2725,
+            "core": 0.060865,
+            "tokens_seen": 4362076160,
+            "train_time_ms": 1310950,
+            "step_avg_ms": 157.57
+          },
+          "moe64": {
+            "stop_step": 5760,
+            "stop_kind": "target_reached",
+            "final_valid_loss": 3.2769,
+            "core": 0.050558,
+            "tokens_seen": 3019898880,
+            "train_time_ms": 3115985,
+            "step_avg_ms": 540.97
+          },
+          "moe256": {
+            "stop_step": 4864,
+            "stop_kind": "target_reached",
+            "final_valid_loss": 3.2778,
+            "core": 0.051878,
+            "tokens_seen": 2550136832,
+            "train_time_ms": 3565374,
+            "step_avg_ms": 733.01
+          }
+        },
+        "fp8": {
+          "dense": {
+            "stop_step": 8320,
+            "stop_kind": "target_reached",
+            "final_valid_loss": 3.2758,
+            "core": 0.057261,
+            "tokens_seen": 4362076160,
+            "train_time_ms": 1304489,
+            "step_avg_ms": 156.79
+          },
+          "moe64": {
+            "stop_step": 6272,
+            "stop_kind": "target_reached",
+            "final_valid_loss": 3.2684,
+            "core": 0.060741,
+            "tokens_seen": 3288334336,
+            "train_time_ms": 3044978,
+            "step_avg_ms": 485.49
+          },
+          "moe256": {
+            "stop_step": 4864,
+            "stop_kind": "target_reached",
+            "final_valid_loss": 3.2796,
+            "core": 0.070765,
+            "tokens_seen": 2550136832,
+            "train_time_ms": 3371195,
+            "step_avg_ms": 693.09
+          }
+        },
+        "nvfp4": {
+          "dense": {
+            "stop_step": 9536,
+            "stop_kind": "completed_full_horizon",
+            "final_valid_loss": 3.3047,
+            "core": 0.04943,
+            "tokens_seen": 4999610368,
+            "target_reached": false
+          },
+          "moe64": {
+            "stop_step": 9536,
+            "stop_kind": "completed_full_horizon",
+            "final_valid_loss": 3.595,
+            "core": 0.030931,
+            "tokens_seen": 4999610368,
+            "target_reached": false
+          },
+          "moe256": {
+            "stop_step": 9536,
+            "stop_kind": "completed_full_horizon",
+            "final_valid_loss": 3.4573,
+            "core": 0.04905,
+            "tokens_seen": 4999610368,
+            "target_reached": false
+          }
+        }
+      }
+    },
+    "model_param_counts": {
+      "source": "derived_from_configs_and_nmoe.metrics.param_counts",
+      "dense": {
+        "params_total": 190532352,
+        "params_active": 190532352
+      },
+      "moe64": {
+        "params_total": 755534592,
+        "params_active": 191073024
+      },
+      "moe256": {
+        "params_total": 2836482816,
+        "params_active": 192891648
+      },
+      "9536_step_contract": {
+        "tokens_seen": 4999610368,
+        "dense_tokens_per_total_param": 26.24021755633395,
+        "dense_tokens_per_active_param": 26.24021755633395,
+        "moe64_tokens_per_total_param": 6.617314805717776,
+        "moe64_tokens_per_active_param": 26.16596729343528,
+        "moe256_tokens_per_total_param": 1.7626085459772767,
+        "moe256_tokens_per_active_param": 25.91926776581965
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/0003_dense_sdpa_loss.json"
+    },
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/0003_dense_sdpa_throughput.json"
+    },
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/0003_moe64_bf16_loss.json"
+    },
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/0003_moe64_bf16_router_cv.json"
+    },
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/0003_moe64_bf16_router_entropy.json"
+    },
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/0003_moe64_bf16_throughput.json"
+    },
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/0003_ultra256_bf16_loss.json"
+    },
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/0003_ultra256_bf16_router_cv.json"
+    },
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/0003_ultra256_bf16_router_entropy.json"
+    },
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/0003_ultra256_bf16_throughput.json"
+    },
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/manifest.json"
+    },
+    {
+      "kind": "cluster_log",
+      "path": "blog_artifacts/0003_closure_20260312_bf16/logs/dense.log"
+    },
+    {
+      "kind": "cluster_log",
+      "path": "blog_artifacts/0003_closure_20260312_bf16/logs/moe256.log"
+    },
+    {
+      "kind": "cluster_log",
+      "path": "blog_artifacts/0003_closure_20260312_bf16/logs/moe64.log"
+    },
+    {
+      "kind": "cluster_log",
+      "path": "blog_artifacts/0003_closure_20260312_fp8/logs/dense.log"
+    },
+    {
+      "kind": "cluster_log",
+      "path": "blog_artifacts/0003_closure_20260312_fp8/logs/moe256.log"
+    },
+    {
+      "kind": "cluster_log",
+      "path": "blog_artifacts/0003_closure_20260312_fp8/logs/moe64.log"
+    },
+    {
+      "kind": "cluster_log",
+      "path": "blog_artifacts/0003_closure_20260312_nvfp4/logs/dense.log"
+    },
+    {
+      "kind": "cluster_log",
+      "path": "blog_artifacts/0003_closure_20260312_nvfp4/logs/moe256.log"
+    },
+    {
+      "kind": "cluster_log",
+      "path": "blog_artifacts/0003_closure_20260312_nvfp4/logs/moe64.log"
+    },
+    {
+      "kind": "cluster_sqlite",
+      "path": "blog_artifacts/0003_closure_20260312_bf16/experiments_bf16.db"
+    },
+    {
+      "kind": "cluster_sqlite",
+      "path": "blog_artifacts/0003_closure_20260312_fp8/experiments_fp8.db"
+    },
+    {
+      "kind": "cluster_sqlite",
+      "path": "blog_artifacts/0003_closure_20260312_nvfp4/experiments_nvfp4.db"
+    },
+    {
+      "kind": "config_toml",
+      "path": "configs/speedrun/small_dense_sdpa.toml"
+    },
+    {
+      "kind": "config_toml",
+      "path": "configs/speedrun/small_moe.toml"
+    },
+    {
+      "kind": "config_toml",
+      "path": "configs/speedrun/small_moe_ultra.toml"
+    },
+    {
+      "kind": "metrics_duckdb",
+      "path": "metrics/run_1767924490_732716/rank_0.duckdb"
+    },
+    {
+      "kind": "metrics_duckdb",
+      "path": "metrics/run_1767932268_736761/rank_0.duckdb"
+    },
+    {
+      "kind": "metrics_duckdb",
+      "path": "metrics/run_1767976973_748979/rank_0.duckdb"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/dense_calibration_curve.svg",
+      "logical_path": "/figures/dense_calibration_curve.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/speedrun_closure_matrix.svg",
+      "logical_path": "/figures/speedrun_closure_matrix.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/speedrun_dense_moe_ultra_loss.svg",
+      "logical_path": "/figures/speedrun_dense_moe_ultra_loss.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/speedrun_throughput_overlay.svg",
+      "logical_path": "/figures/speedrun_throughput_overlay.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/tokens_per_routed_expert.svg",
+      "logical_path": "/figures/tokens_per_routed_expert.svg"
+    }
+  ],
+  "commands": [
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/small_dense_sdpa.toml --dtype=bf16 --eval_enabled=true --eval_tasks=core",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/small_dense_sdpa.toml --dtype=fp8 --eval_enabled=true --eval_tasks=core",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/small_dense_sdpa.toml --dtype=nvfp4 --eval_enabled=true --eval_tasks=core",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/small_moe.toml --dtype=bf16 --eval_enabled=true --eval_tasks=core",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/small_moe.toml --dtype=fp8 --eval_enabled=true --eval_tasks=core",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/small_moe.toml --dtype=nvfp4 --eval_enabled=true --eval_tasks=core",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/small_moe_ultra.toml --dtype=bf16 --steps=9536 --warmup_steps=256 --hold_tokens=3925721344 --decay_tokens=1073741824 --eval_enabled=true --eval_tasks=core",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/small_moe_ultra.toml --dtype=fp8 --steps=9536 --warmup_steps=256 --hold_tokens=3925721344 --decay_tokens=1073741824 --eval_enabled=true --eval_tasks=core",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/small_moe_ultra.toml --dtype=nvfp4 --steps=9536 --warmup_steps=256 --hold_tokens=3925721344 --decay_tokens=1073741824 --eval_enabled=true --eval_tasks=core"
+  ],
+  "provenance_commands": [
+    "git clone --filter=blob:none --no-checkout https://github.com/KellerJordan/modded-nanogpt.git /tmp/modded-nanogpt-0003",
+    "cd /tmp/modded-nanogpt-0003 && git show HEAD:records/track_1_short/2024-06-06_AdamW/f66d43d7-e449-4029-8adf-e8537bab49ea.log | rg 's:9536 tel:'",
+    "cat blog_artifacts/0003_closure_20260312_bf16/logs/{dense,moe64,moe256}.log",
+    "cat blog_artifacts/0003_closure_20260312_fp8/logs/{dense,moe64,moe256}.log",
+    "cat blog_artifacts/0003_closure_20260312_nvfp4/logs/{dense,moe64,moe256}.log"
+  ],
+  "notes": [
+    "This receipt package keeps both layers of the story: the historical January calibration lanes that established the anchor-gap doctrine and the March 2026 closure matrix that upgrades the loop with end-of-run CORE.",
+    "The public anchor is split into a recipe neighborhood (June 7 2024 commit b6b0a0d) and an exact numeric log anchor (the current public June 2024 record path at HEAD).",
+    "The historical dense lane is still the cleanest statement of the original +0.205 honesty boundary at step 9536.",
+    "The closure matrix uses the public anchor operationally via target_loss=3.28 rather than only as a post-hoc comparison.",
+    "MoE-256 in the closure matrix is a dedicated fixed-horizon override of small_moe_ultra.toml, not the older longer iso-tokens/expert slice.",
+    "bf16 and fp8 close cleanly across all three architectures; nvfp4 does not reach target in any lane, but MoE-256 is materially healthier than MoE-64 on both loss and CORE.",
+    "The throughput medians in this post still come from the earlier historical bf16 surface; the new closure matrix is the loss-plus-CORE upgrade.",
+    "Validate repo-local paths with verify_post_receipts.py. Full output-path validation still requires --check-paths --check-outputs in a data-mounted environment."
+  ],
+  "cluster_receipts": {
+    "experiments_db_path": "experiments.db",
+    "blog_artifact_manifest_path": "blog_artifacts/manifest.json",
+    "rank_0_duckdbs": {
+      "dense_sdpa": "metrics/run_1767924490_732716/rank_0.duckdb",
+      "moe64_bf16": "metrics/run_1767932268_736761/rank_0.duckdb",
+      "ultra256_bf16": "metrics/run_1767976973_748979/rank_0.duckdb"
+    },
+    "eval_outputs_root": "eval/outputs",
+    "closure_matrix_roots": {
+      "bf16": "blog_artifacts/0003_closure_20260312_bf16",
+      "fp8": "blog_artifacts/0003_closure_20260312_fp8",
+      "nvfp4": "blog_artifacts/0003_closure_20260312_nvfp4"
+    },
+    "closure_matrix_logs": {
+      "bf16": {
+        "dense": "blog_artifacts/0003_closure_20260312_bf16/logs/dense.log",
+        "moe64": "blog_artifacts/0003_closure_20260312_bf16/logs/moe64.log",
+        "moe256": "blog_artifacts/0003_closure_20260312_bf16/logs/moe256.log"
+      },
+      "fp8": {
+        "dense": "blog_artifacts/0003_closure_20260312_fp8/logs/dense.log",
+        "moe64": "blog_artifacts/0003_closure_20260312_fp8/logs/moe64.log",
+        "moe256": "blog_artifacts/0003_closure_20260312_fp8/logs/moe256.log"
+      },
+      "nvfp4": {
+        "dense": "blog_artifacts/0003_closure_20260312_nvfp4/logs/dense.log",
+        "moe64": "blog_artifacts/0003_closure_20260312_nvfp4/logs/moe64.log",
+        "moe256": "blog_artifacts/0003_closure_20260312_nvfp4/logs/moe256.log"
+      }
+    }
+  },
+  "run_db_summaries": {
+    "dense_sdpa": {
+      "experiment_id": "speedrun_small_dense_sdpa_june2024",
+      "started_at": "2026-01-09 02:08:10",
+      "ended_at": "2026-01-09 03:58:39",
+      "status": "completed",
+      "steps_completed": 9536,
+      "tokens_seen": 4999610368,
+      "stop_reason": "completed",
+      "target_reached": false,
+      "train_time_ms_excl_valid": 6279269.354513381,
+      "valid_time_ms": 342495.6297276076,
+      "eval_enabled": false,
+      "eval_every": 0,
+      "eval_tasks": "core"
+    },
+    "moe64_bf16": {
+      "experiment_id": "speedrun_small_moe_june2024",
+      "started_at": "2026-01-09 04:17:48",
+      "ended_at": "2026-01-09 07:58:02",
+      "status": "completed",
+      "steps_completed": 9536,
+      "tokens_seen": 4999610368,
+      "stop_reason": "completed",
+      "target_reached": false,
+      "train_time_ms_excl_valid": 12619302.91609536,
+      "valid_time_ms": 585985.7119314838,
+      "eval_enabled": false,
+      "eval_every": 0,
+      "eval_tasks": "core"
+    },
+    "ultra256_bf16": {
+      "experiment_id": "speedrun_small_moe_ultra_isotpe",
+      "started_at": "2026-01-09 16:42:53",
+      "ended_at": "2026-01-09 21:02:38",
+      "status": "completed_target",
+      "steps_completed": 10752,
+      "tokens_seen": 5637144576,
+      "stop_reason": "target_reached",
+      "target_reached": true,
+      "val_loss_to_target": 3.2799384593963623,
+      "train_time_ms_excl_valid": 14860339.937474346,
+      "valid_time_ms": 714863.5901906528,
+      "eval_enabled": false,
+      "eval_every": 0,
+      "eval_tasks": "core"
+    },
+    "closure_matrix_20260312": {
+      "bf16": {
+        "dense": {
+          "stop_step": 8320,
+          "stop_kind": "target_reached",
+          "final_valid_loss": 3.2725,
+          "core": 0.060865,
+          "tokens_seen": 4362076160,
+          "train_time_ms": 1310950,
+          "step_avg_ms": 157.57
+        },
+        "moe64": {
+          "stop_step": 5760,
+          "stop_kind": "target_reached",
+          "final_valid_loss": 3.2769,
+          "core": 0.050558,
+          "tokens_seen": 3019898880,
+          "train_time_ms": 3115985,
+          "step_avg_ms": 540.97
+        },
+        "moe256": {
+          "stop_step": 4864,
+          "stop_kind": "target_reached",
+          "final_valid_loss": 3.2778,
+          "core": 0.051878,
+          "tokens_seen": 2550136832,
+          "train_time_ms": 3565374,
+          "step_avg_ms": 733.01
+        }
+      },
+      "fp8": {
+        "dense": {
+          "stop_step": 8320,
+          "stop_kind": "target_reached",
+          "final_valid_loss": 3.2758,
+          "core": 0.057261,
+          "tokens_seen": 4362076160,
+          "train_time_ms": 1304489,
+          "step_avg_ms": 156.79
+        },
+        "moe64": {
+          "stop_step": 6272,
+          "stop_kind": "target_reached",
+          "final_valid_loss": 3.2684,
+          "core": 0.060741,
+          "tokens_seen": 3288334336,
+          "train_time_ms": 3044978,
+          "step_avg_ms": 485.49
+        },
+        "moe256": {
+          "stop_step": 4864,
+          "stop_kind": "target_reached",
+          "final_valid_loss": 3.2796,
+          "core": 0.070765,
+          "tokens_seen": 2550136832,
+          "train_time_ms": 3371195,
+          "step_avg_ms": 693.09
+        }
+      },
+      "nvfp4": {
+        "dense": {
+          "stop_step": 9536,
+          "stop_kind": "completed_full_horizon",
+          "final_valid_loss": 3.3047,
+          "core": 0.04943,
+          "tokens_seen": 4999610368,
+          "target_reached": false
+        },
+        "moe64": {
+          "stop_step": 9536,
+          "stop_kind": "completed_full_horizon",
+          "final_valid_loss": 3.595,
+          "core": 0.030931,
+          "tokens_seen": 4999610368,
+          "target_reached": false
+        },
+        "moe256": {
+          "stop_step": 9536,
+          "stop_kind": "completed_full_horizon",
+          "final_valid_loss": 3.4573,
+          "core": 0.04905,
+          "tokens_seen": 4999610368,
+          "target_reached": false
+        }
+      }
+    }
+  },
+  "capability_surface_status": {
+    "historical_published_lanes": {
+      "dense_sdpa": {
+        "eval_enabled": false,
+        "eval_tasks": "core",
+        "core_metrics_present": false
+      },
+      "moe64_bf16": {
+        "eval_enabled": false,
+        "eval_tasks": "core",
+        "core_metrics_present": false
+      },
+      "ultra256_bf16": {
+        "eval_enabled": false,
+        "eval_tasks": "core",
+        "core_metrics_present": false
+      }
+    },
+    "closure_matrix_20260312": {
+      "dense_bf16": {
+        "eval_enabled": true,
+        "eval_tasks": "core",
+        "core_metrics_present": true
+      },
+      "moe64_bf16": {
+        "eval_enabled": true,
+        "eval_tasks": "core",
+        "core_metrics_present": true
+      },
+      "moe256_bf16": {
+        "eval_enabled": true,
+        "eval_tasks": "core",
+        "core_metrics_present": true
+      },
+      "dense_fp8": {
+        "eval_enabled": true,
+        "eval_tasks": "core",
+        "core_metrics_present": true
+      },
+      "moe64_fp8": {
+        "eval_enabled": true,
+        "eval_tasks": "core",
+        "core_metrics_present": true
+      },
+      "moe256_fp8": {
+        "eval_enabled": true,
+        "eval_tasks": "core",
+        "core_metrics_present": true
+      },
+      "dense_nvfp4": {
+        "eval_enabled": true,
+        "eval_tasks": "core",
+        "core_metrics_present": true
+      },
+      "moe64_nvfp4": {
+        "eval_enabled": true,
+        "eval_tasks": "core",
+        "core_metrics_present": true
+      },
+      "moe256_nvfp4": {
+        "eval_enabled": true,
+        "eval_tasks": "core",
+        "core_metrics_present": true
+      }
+    },
+    "note": "The historical January calibration lanes proved why the speedrun objective had to grow beyond loss. The March 2026 closure matrix is the upgraded eval-enabled surface the post now relies on."
+  }
+}

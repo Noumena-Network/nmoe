@@ -30,9 +30,7 @@ n_layers = 12
 n_heads = 12
 inter_dim = 3072
 
-# NVFP4 I/O gains (NVFP4-only; required for stable NVFP4 STE training)
-fp4_embed_gain = 10.667
-fp4_logits_gain = 0.125
+# NVFP4 uses the same unit-gain I/O contract as bf16/fp8 by default.
 
 # MoE: 256 routed experts, top-7 routed + 1 shared = 8 total/token
 n_dense_layers = 0   # All MoE

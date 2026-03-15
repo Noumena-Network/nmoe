@@ -1,16 +1,21 @@
-# Speedrun: SDPA Attention (June 2024 Calibration Match)
+# Speedrun: SDPA Attention (June 2024-aligned dense calibration lane)
 #
-# Matches June 2024 modded-nanogpt baseline (SHA b6b0a0d) exactly:
+# Adapted from the June 2024 modded-nanogpt neighborhood around SHA b6b0a0d:
 #   - n_head=12, dim=768, n_layer=12, inter_dim=3072
 #   - LR=1.8e-3, wd=0.1, betas=(0.9, 0.95)
-#   - warmup=256, warmdown=2048, total=9536 steps
-#   - 524K tokens/step → 5B tokens total
+#   - 9536 steps at 524K tokens/step → ~5B tokens total
 #
-# Architecture gaps (documented, not fixable without code changes):
-#   - FFN: SwiGLU (ours) vs GELU (June 2024)
-#   - Embeddings: Untied (ours) vs Tied (June 2024)
-#   - Vocab: 50304 (ours) vs 50257 (June 2024)
-#   - μP scaling: Present (ours) vs None (June 2024)
+# Public-anchor nuance:
+#   - the preserved June 2024 run record reports the step-9536 validation anchor in
+#     records/track_1_short/2024-06-06_AdamW/f66d43d7-e449-4029-8adf-e8537bab49ea.log
+#   - that README remembers warmup=250 and warmdown=2000 IIRC
+#   - this nmoe lane uses the cleaner 256/2048 WSD decomposition
+#
+# Known architecture / recipe gaps (documented, not fixed away here):
+#   - FFN: SwiGLU (ours) vs GELU (public dense anchor)
+#   - Embeddings: Untied (ours) vs Tied (public dense anchor)
+#   - Vocab: 50304 (ours) vs 50257 (public dense anchor)
+#   - μP scaling: Present (ours) vs None (public dense anchor)
 #
 # Run:
 #   torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/small_dense_sdpa.toml
@@ -60,9 +65,10 @@ adam_beta1 = 0.9
 adam_beta2 = 0.95
 adam_eps = 1e-8
 
-# Schedule (June 2024: warmup=256, warmdown=2048, total=9536)
+# Schedule (nmoe calibration lane: warmup=256, warmdown=2048, total=9536)
+# This is June-style rather than schedule-identical to the public README note.
 # warmdown starts at step 9536-2048=7488
-warmup_steps = 256              # Match June 2024 (was 250)
+warmup_steps = 256              # public README remembers 250; this lane uses the cleaner 256-step warmup
 hold_tokens = 3_925_721_344     # 7488 steps × 524288 tokens/step
 decay_tokens = 1_073_741_824    # 2048 steps × 524288 tokens/step
 decay_floor = 1e-6              # ~0, WSD requires > 0

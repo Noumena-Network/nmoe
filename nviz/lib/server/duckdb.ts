@@ -45,31 +45,34 @@ function listRunDirs(dir: string): string[] {
   }
 }
 
-function hasParquetFiles(dir: string, run: string): boolean {
-  try {
-    const runDir = safeRunDir(dir, run)
-    const files = readdirSync(runDir, { withFileTypes: true })
-    return files.some((e) => e.isFile() && e.name.startsWith('step_') && e.name.endsWith('.parquet'))
-  } catch {
-    return false
-  }
+function parseStepFromFilename(name: string): number | null {
+  const m = /^step_(\d+)\.parquet$/.exec(name)
+  if (!m) return null
+  return Number.parseInt(m[1], 10)
 }
 
-function newestParquetMtime(dir: string, run: string): number {
+function summarizeRun(dir: string, run: string): RunSummary | null {
   try {
     const runDir = safeRunDir(dir, run)
     const files = readdirSync(runDir, { withFileTypes: true })
-      .filter((e) => e.isFile() && e.name.startsWith('step_') && e.name.endsWith('.parquet'))
     let newest = 0
+    let lastStep = 0
+    let sawParquet = false
     for (const f of files) {
+      if (!f.isFile()) continue
+      const step = parseStepFromFilename(f.name)
+      if (step == null) continue
+      sawParquet = true
+      if (step > lastStep) lastStep = step
       try {
         const st = statSync(join(runDir, f.name))
         if (st.mtimeMs > newest) newest = st.mtimeMs
       } catch {}
     }
-    return newest
+    if (!sawParquet) return null
+    return { run, last_ts: newest, last_step: lastStep }
   } catch {
-    return 0
+    return null
   }
 }
 
@@ -80,7 +83,7 @@ function parquetGlob(dir: string, run: string): string {
 
 async function withParquetView<T>(run: string, fn: (q: (sql: string) => Promise<any[]>) => Promise<T>): Promise<T> {
   const dir = metricsDir()
-  if (!hasParquetFiles(dir, run)) return await fn(async () => [])
+  if (!summarizeRun(dir, run)) return await fn(async () => [])
 
   const inst = await DuckDBInstance.create(':memory:')
   const conn = await inst.connect()
@@ -102,36 +105,35 @@ async function withParquetView<T>(run: string, fn: (q: (sql: string) => Promise<
   }
 }
 
-let allRunsCache: { at_ms: number; runs: RunSummary[] } | null = null
+let allRunsCache: { at_ms: number; dir: string; runs: RunSummary[] } | null = null
 
 export async function allRuns(): Promise<RunSummary[]> {
+  const dir = metricsDir()
   const now = Date.now()
-  if (allRunsCache && (now - allRunsCache.at_ms) < 2000) {
+  if (allRunsCache && allRunsCache.dir === dir && (now - allRunsCache.at_ms) < 2000) {
     return allRunsCache.runs
   }
 
-  const dir = metricsDir()
   const runs = listRunDirs(dir)
   const out: RunSummary[] = []
   for (const run of runs) {
-    if (!hasParquetFiles(dir, run)) continue
-    const inst = await DuckDBInstance.create(':memory:')
-    const conn = await inst.connect()
-    try {
-      const glob = parquetGlob(dir, run)
-      await conn.run(`CREATE VIEW metrics AS SELECT * FROM read_parquet(${sqlLit(glob)}, union_by_name=true, filename=false)`)
-      const reader = await conn.runAndReadAll(`SELECT max(ts_ms) AS last_ts, max(step) AS last_step FROM metrics`)
-      const rows = reader.getRows()
-      const last_ts = Number(rows?.[0]?.[0] ?? 0)
-      const last_step = Number(rows?.[0]?.[1] ?? 0)
-      out.push({ run, last_ts, last_step })
-    } finally {
-      try { (conn as any).close?.() } catch {}
-      try { (inst as any).close?.() } catch {}
-    }
+    const summary = summarizeRun(dir, run)
+    if (summary) out.push(summary)
   }
   out.sort((a, b) => b.last_ts - a.last_ts || b.last_step - a.last_step || a.run.localeCompare(b.run))
-  allRunsCache = { at_ms: now, runs: out }
+  allRunsCache = { at_ms: now, dir, runs: out }
+  return out
+}
+
+export async function selectedRuns(runs: string[]): Promise<RunSummary[]> {
+  const dir = metricsDir()
+  const out: RunSummary[] = []
+  const uniq = Array.from(new Set(runs.filter(Boolean)))
+  for (const run of uniq) {
+    const summary = summarizeRun(dir, run)
+    if (summary) out.push(summary)
+  }
+  out.sort((a, b) => b.last_ts - a.last_ts || b.last_step - a.last_step || a.run.localeCompare(b.run))
   return out
 }
 

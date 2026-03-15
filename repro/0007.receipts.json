@@ -1,0 +1,23 @@
+{
+  "post": "0007",
+  "title": "The Geometry Hypothesis",
+  "evidence_tier": "paper_canonical",
+  "status": "public_reference_surface",
+  "generated_at_utc": "2026-03-09T02:59:45Z",
+  "summary": "Public paper-PDF mirror for the atlas program: the Atlas Foundations paper served on the site. The internal paper source tree remains canonical but is not mirrored here.",
+  "artifacts": [
+    {
+      "kind": "paper_pdf",
+      "path": "papers/atlas-foundations.pdf",
+      "public_asset": "/papers/atlas-foundations.pdf"
+    }
+  ],
+  "commands": [
+    "ls papers/atlas-foundations.pdf"
+  ],
+  "notes": [
+    "This public receipt mirrors only the PDFs exposed on the site; it does not enumerate the internal paper source tree, claim ledger, or run notes.",
+    "The papers remain the primary truth boundary for the blog post's theorem / ontology claims.",
+    "This is a public reference surface, not a matched-success intervention bundle."
+  ]
+}

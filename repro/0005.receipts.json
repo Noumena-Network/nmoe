@@ -1,0 +1,90 @@
+{
+  "post": "0005",
+  "title": "NVFP4 Dynamics",
+  "evidence_tier": "external_repro",
+  "status": "complete_for_scope",
+  "generated_at_utc": "2026-03-13T16:31:01Z",
+  "summary": "Corrected 0005 receipts: a 384-step gain-isolation quartet proving fp4_embed_gain helps and fp4_logits_gain=0.125 hurts, plus the corrected 9536-step embed-only+adamw rerun that finishes at 3.1735 versus the bf16 baseline 3.1264, leaving a late-window residual of about +0.046.",
+  "runs": {
+    "bf16_baseline": "run_1773277673_591",
+    "gain_unit_v4": "run_1773366025_100249",
+    "gain_embed_v4": "run_1773366550_103111",
+    "gain_logits_v4": "run_1773367081_106017",
+    "gain_old_pair_v4": "run_1773367618_108920",
+    "embed_only_adamw_v2": "run_1773368195_111994"
+  },
+  "artifacts": [
+    {
+      "kind": "config_contract",
+      "path": "configs/speedrun/moe.toml"
+    },
+    {
+      "kind": "training_source",
+      "path": "nmoe/train.py"
+    },
+    {
+      "kind": "training_source",
+      "path": "nmoe/model.py"
+    },
+    {
+      "kind": "training_source",
+      "path": "nmoe/moe.py"
+    },
+    {
+      "kind": "experiments_db",
+      "path": "blog_artifacts/0005_nvfp4_gain_isolation_384_v4_20260313/experiments.db"
+    },
+    {
+      "kind": "experiments_db",
+      "path": "blog_artifacts/0005_nvfp4_embed_only_adamw_long_v2_20260313/experiments.db"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0005_nvfp4_gain_isolation_384_v4_20260313/metrics/run_1773366025_100249/step_00000384.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0005_nvfp4_gain_isolation_384_v4_20260313/metrics/run_1773366550_103111/step_00000384.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0005_nvfp4_gain_isolation_384_v4_20260313/metrics/run_1773367081_106017/step_00000384.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0005_nvfp4_gain_isolation_384_v4_20260313/metrics/run_1773367618_108920/step_00000384.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0005_nvfp4_embed_only_adamw_long_v2_20260313/metrics/run_1773368195_111994/step_00003072.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0005_nvfp4_embed_only_adamw_long_v2_20260313/metrics/run_1773368195_111994/step_00004096.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0005_nvfp4_embed_only_adamw_long_v2_20260313/metrics/run_1773368195_111994/step_00009536.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0005_nvfp4_matrix_f20260312/metrics/run_1773277673_591/step_00009536.parquet"
+    }
+  ],
+  "commands": [
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/moe.toml --dtype=bf16 --steps=9536",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/moe.toml --dtype=nvfp4 --steps=384 --fp4_embed_gain=1.0 --fp4_logits_gain=1.0",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/moe.toml --dtype=nvfp4 --steps=384 --fp4_embed_gain=10.667 --fp4_logits_gain=1.0",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/moe.toml --dtype=nvfp4 --steps=384 --fp4_embed_gain=1.0 --fp4_logits_gain=0.125",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/moe.toml --dtype=nvfp4 --steps=384 --fp4_embed_gain=10.667 --fp4_logits_gain=0.125",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/moe.toml --dtype=nvfp4 --steps=9536 --fp4_embed_gain=10.667 --fp4_logits_gain=1.0 --expert_opt=adamw",
+    "python3 scripts/repro/verify_post_receipts.py --repo-root . --receipts-dir repro --post 0005"
+  ],
+  "notes": [
+    "Current code has two explicit NVFP4-only gains on this surface: fp4_embed_gain and fp4_logits_gain. This receipt does not promote a third NVFP4-only gain because none exists in the current tree.",
+    "The corrected v4 quartet was rerun after syncing the blockscaled backward-profile replay fix in nmoe/moe.py; that semantic correction does not change the sign of the gain split.",
+    "At 384 steps, embed-only beats unit by about 0.181 nats, logits-only is worse than unit by about 0.154 nats, and the historical pair remains worse than unit.",
+    "The corrected embed-only+adamw line finishes at 3.173490 versus the bf16 baseline 3.126422. From steps 7808-9536, the residual stays in a tight ~+0.046 to +0.047 band.",
+    "This receipt supports the narrowed current claim only: fp4_embed_gain is helpful, fp4_logits_gain=0.125 is harmful, the historical pair is net harmful, and the corrected embed-only+adamw line gets nvfp4 close to bf16 but does not yet close the remaining bug."
+  ]
+}

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" role="img">
+<style>.t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}.m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}.muted{fill:#7c7c7c}.axis{stroke:#6b6b6b;stroke-width:1}.grid{stroke:#b8b1aa;stroke-width:1;opacity:.35}.dotted{stroke-dasharray:4 4}</style>
+<text x="320" y="24" font-size="18" text-anchor="middle" class="t">NVFP4 flip-rate telemetry (canary layer)</text>
+<text x="320" y="46" font-size="13" text-anchor="middle" class="t muted">dither keeps codes moving; RTN-only tends to freeze</text>
+<line x1="64.0" y1="70" x2="64.0" y2="346" class="grid" />
+<text x="64.0" y="368" font-size="12" text-anchor="middle" class="t muted">0</text>
+<line x1="122.5" y1="70" x2="122.5" y2="346" class="grid" />
+<text x="122.5" y="368" font-size="12" text-anchor="middle" class="t muted">1k</text>
+<line x1="181.0" y1="70" x2="181.0" y2="346" class="grid" />
+<text x="181.0" y="368" font-size="12" text-anchor="middle" class="t muted">2k</text>
+<line x1="298.1" y1="70" x2="298.1" y2="346" class="grid" />
+<text x="298.1" y="368" font-size="12" text-anchor="middle" class="t muted">4k</text>
+<line x1="415.1" y1="70" x2="415.1" y2="346" class="grid" />
+<text x="415.1" y="368" font-size="12" text-anchor="middle" class="t muted">6k</text>
+<line x1="532.1" y1="70" x2="532.1" y2="346" class="grid" />
+<text x="532.1" y="368" font-size="12" text-anchor="middle" class="t muted">8k</text>
+<line x1="622.0" y1="70" x2="622.0" y2="346" class="grid" />
+<text x="622.0" y="368" font-size="12" text-anchor="middle" class="t muted">9536</text>
+<line x1="64" y1="346.0" x2="622" y2="346.0" class="axis" />
+<text x="54" y="350.0" font-size="12" text-anchor="end" class="t muted">0%</text>
+<line x1="64" y1="290.8" x2="622" y2="290.8" class="grid" />
+<text x="54" y="294.8" font-size="12" text-anchor="end" class="t muted">2%</text>
+<line x1="64" y1="235.6" x2="622" y2="235.6" class="grid" />
+<text x="54" y="239.6" font-size="12" text-anchor="end" class="t muted">4%</text>
+<line x1="64" y1="180.4" x2="622" y2="180.4" class="grid" />
+<text x="54" y="184.4" font-size="12" text-anchor="end" class="t muted">6%</text>
+<line x1="64" y1="125.2" x2="622" y2="125.2" class="grid" />
+<text x="54" y="129.2" font-size="12" text-anchor="end" class="t muted">8%</text>
+<line x1="64" y1="70.0" x2="622" y2="70.0" class="axis" />
+<text x="54" y="74.0" font-size="12" text-anchor="end" class="t muted">10%</text>
+<line x1="64" y1="346" x2="622" y2="346" class="axis" />
+<line x1="64" y1="346" x2="64" y2="70" class="axis" />
+<path d="M 110.8 285.3 L 169.3 318.4 L 251.2 335.0 L 415.1 337.7 L 622.0 340.5" stroke="#6b6b6b" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<path d="M 69.9 114.9 L 75.7 81.5 L 81.6 70.0 L 87.4 99.3 L 93.3 116.6 L 99.1 123.8 L 105.0 128.3 L 110.8 128.9 L 116.7 133.0 L 122.5 134.6 L 128.4 135.7 L 134.2 139.8 L 140.1 139.9 L 145.9 142.9 L 151.8 147.1 L 157.6 144.9 L 163.5 148.4 L 169.3 148.5 L 175.2 150.7 L 181.0 156.1 L 186.9 153.0 L 192.7 150.2 L 198.6 160.5 L 204.4 171.9 L 210.3 161.3 L 216.1 172.2 L 222.0 170.0 L 227.8 166.7 L 233.7 155.4 L 239.5 168.1 L 245.4 171.1 L 251.2 153.8 L 257.1 171.4 L 263.0 173.1 L 268.8 168.3 L 274.7 172.2 L 280.5 179.9 L 286.4 176.6 L 292.2 177.4 L 298.1 177.3 L 303.9 182.3 L 309.8 181.1 L 315.6 181.8 L 321.5 179.2 L 327.3 178.7 L 333.2 181.3 L 339.0 180.1 L 344.9 164.2 L 350.7 180.0 L 356.6 183.6 L 362.4 181.1 L 368.3 174.7 L 374.1 171.9 L 380.0 182.6 L 385.8 182.0 L 391.7 170.1 L 397.5 181.7 L 403.4 182.5 L 409.2 182.6 L 415.1 181.1 L 420.9 182.8 L 426.8 183.9 L 432.6 182.8 L 438.5 183.6 L 444.3 182.4 L 450.2 181.9 L 456.1 178.0 L 461.9 180.9 L 467.8 181.0 L 473.6 183.6 L 479.5 181.8 L 485.3 181.2 L 491.2 181.0 L 497.0 182.6 L 502.9 179.5 L 508.7 182.0 L 514.6 182.1 L 520.4 183.6 L 526.3 182.2 L 532.1 182.5 L 538.0 183.7 L 543.8 183.4 L 549.7 182.3 L 555.5 183.8 L 561.4 183.1 L 567.2 181.4 L 573.1 183.1 L 578.9 183.6 L 584.8 183.7 L 590.6 184.1 L 596.5 184.2 L 602.3 183.8 L 608.2 183.9 L 614.0 184.2 L 619.9 184.1 L 622.0 183.7" stroke="#FF9101" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<rect x="64" y="42" width="12" height="12" fill="#6b6b6b" />
+<text x="80" y="52" font-size="12" text-anchor="start" class="t muted">v2 (no dither, approx)</text>
+<rect x="274" y="42" width="12" height="12" fill="#FF9101" />
+<text x="290" y="52" font-size="12" text-anchor="start" class="t muted">v3 (resonant dither)</text>
+<text x="343.0" y="386" font-size="13" text-anchor="middle" class="t">Step</text>
+<text x="18" y="208.0" font-size="13" text-anchor="middle" class="t" transform="rotate(-90 18 208.0)">Nibble flip fraction</text>
+</svg>

@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="520" viewBox="0 0 760 520" role="img">
+<style>.t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}.m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}.muted{fill:#7c7c7c}.axis{stroke:#6b6b6b;stroke-width:1}.grid{stroke:#b8b1aa;stroke-width:1;opacity:.35}.dotted{stroke-dasharray:4 4}</style>
+<text x="380" y="26" font-size="19" text-anchor="middle" class="t">What “stable routing” looked like in our proto NVFP4 run</text>
+<text x="380" y="50" font-size="13" text-anchor="middle" class="t muted">(E=64, K=6, step=20k; entropy normalized by log(E))</text>
+<line x1="72.0" y1="86.0" x2="72.0" y2="506.0" class="grid" />
+<text x="72.0" y="286" font-size="12" text-anchor="middle" class="t muted">1</text>
+<line x1="139.0" y1="86.0" x2="139.0" y2="506.0" class="grid" />
+<text x="139.0" y="286" font-size="12" text-anchor="middle" class="t muted">2</text>
+<line x1="206.0" y1="86.0" x2="206.0" y2="506.0" class="grid" />
+<text x="206.0" y="286" font-size="12" text-anchor="middle" class="t muted">3</text>
+<line x1="273.0" y1="86.0" x2="273.0" y2="506.0" class="grid" />
+<text x="273.0" y="286" font-size="12" text-anchor="middle" class="t muted">4</text>
+<line x1="340.0" y1="86.0" x2="340.0" y2="506.0" class="grid" />
+<text x="340.0" y="286" font-size="12" text-anchor="middle" class="t muted">5</text>
+<line x1="407.0" y1="86.0" x2="407.0" y2="506.0" class="grid" />
+<text x="407.0" y="286" font-size="12" text-anchor="middle" class="t muted">6</text>
+<line x1="474.0" y1="86.0" x2="474.0" y2="506.0" class="grid" />
+<text x="474.0" y="286" font-size="12" text-anchor="middle" class="t muted">7</text>
+<line x1="541.0" y1="86.0" x2="541.0" y2="506.0" class="grid" />
+<text x="541.0" y="286" font-size="12" text-anchor="middle" class="t muted">8</text>
+<line x1="608.0" y1="86.0" x2="608.0" y2="506.0" class="grid" />
+<text x="608.0" y="286" font-size="12" text-anchor="middle" class="t muted">9</text>
+<line x1="675.0" y1="86.0" x2="675.0" y2="506.0" class="grid" />
+<text x="675.0" y="286" font-size="12" text-anchor="middle" class="t muted">10</text>
+<line x1="742.0" y1="86.0" x2="742.0" y2="506.0" class="grid" />
+<text x="742.0" y="286" font-size="12" text-anchor="middle" class="t muted">11</text>
+<text x="72" y="76" font-size="13" text-anchor="start" class="t muted">Router CV (%)</text>
+<line x1="72.0" y1="266.0" x2="742.0" y2="266.0" class="grid" />
+<text x="62" y="270.0" font-size="12" text-anchor="end" class="t muted">0</text>
+<line x1="72.0" y1="223.4" x2="742.0" y2="223.4" class="grid" />
+<text x="62" y="227.4" font-size="12" text-anchor="end" class="t muted">10</text>
+<line x1="72.0" y1="180.7" x2="742.0" y2="180.7" class="grid" />
+<text x="62" y="184.7" font-size="12" text-anchor="end" class="t muted">20</text>
+<line x1="72.0" y1="138.1" x2="742.0" y2="138.1" class="grid" />
+<text x="62" y="142.1" font-size="12" text-anchor="end" class="t muted">30</text>
+<line x1="72.0" y1="95.4" x2="742.0" y2="95.4" class="grid" />
+<text x="62" y="99.4" font-size="12" text-anchor="end" class="t muted">40</text>
+<line x1="72.0" y1="10.1" x2="742.0" y2="10.1" class="grid" />
+<text x="62" y="14.1" font-size="12" text-anchor="end" class="t muted">60</text>
+<line x1="72.0" y1="266.0" x2="742.0" y2="266.0" class="axis" />
+<line x1="72.0" y1="266.0" x2="72.0" y2="86.0" class="axis" />
+<text x="72" y="316" font-size="13" text-anchor="start" class="t muted">Router entropy (normalized)</text>
+<line x1="72.0" y1="506.0" x2="742.0" y2="506.0" class="grid" />
+<text x="62" y="510.0" font-size="12" text-anchor="end" class="t muted">0.85</text>
+<line x1="72.0" y1="446.0" x2="742.0" y2="446.0" class="grid" />
+<text x="62" y="450.0" font-size="12" text-anchor="end" class="t muted">0.90</text>
+<line x1="72.0" y1="386.0" x2="742.0" y2="386.0" class="grid" />
+<text x="62" y="390.0" font-size="12" text-anchor="end" class="t muted">0.95</text>
+<line x1="72.0" y1="326.0" x2="742.0" y2="326.0" class="grid" />
+<text x="62" y="330.0" font-size="12" text-anchor="end" class="t muted">1.00</text>
+<line x1="72.0" y1="506.0" x2="742.0" y2="506.0" class="axis" />
+<line x1="72.0" y1="506.0" x2="72.0" y2="326.0" class="axis" />
+<path d="M 72.0 178.6 L 139.0 146.6 L 206.0 109.5 L 273.0 217.4 L 340.0 193.1 L 407.0 226.8 L 474.0 228.9 L 541.0 213.5 L 608.0 234.9 L 675.0 231.5 L 742.0 238.3" stroke="#FF9101" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<path d="M 72.0 333.2 L 139.0 341.6 L 206.0 344.0 L 273.0 328.4 L 340.0 330.8 L 407.0 327.2 L 474.0 327.2 L 541.0 328.4 L 608.0 327.2 L 675.0 327.2 L 742.0 326.0" stroke="#FF9101" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<circle cx="72.0" cy="178.6" r="3.6" fill="#FF9101" />
+<circle cx="139.0" cy="146.6" r="3.6" fill="#FF9101" />
+<circle cx="206.0" cy="109.5" r="3.6" fill="#FF9101" />
+<circle cx="273.0" cy="217.4" r="3.6" fill="#FF9101" />
+<circle cx="340.0" cy="193.1" r="3.6" fill="#FF9101" />
+<circle cx="407.0" cy="226.8" r="3.6" fill="#FF9101" />
+<circle cx="474.0" cy="228.9" r="3.6" fill="#FF9101" />
+<circle cx="541.0" cy="213.5" r="3.6" fill="#FF9101" />
+<circle cx="608.0" cy="234.9" r="3.6" fill="#FF9101" />
+<circle cx="675.0" cy="231.5" r="3.6" fill="#FF9101" />
+<circle cx="742.0" cy="238.3" r="3.6" fill="#FF9101" />
+<circle cx="72.0" cy="333.2" r="3.6" fill="#FF9101" />
+<circle cx="139.0" cy="341.6" r="3.6" fill="#FF9101" />
+<circle cx="206.0" cy="344.0" r="3.6" fill="#FF9101" />
+<circle cx="273.0" cy="328.4" r="3.6" fill="#FF9101" />
+<circle cx="340.0" cy="330.8" r="3.6" fill="#FF9101" />
+<circle cx="407.0" cy="327.2" r="3.6" fill="#FF9101" />
+<circle cx="474.0" cy="327.2" r="3.6" fill="#FF9101" />
+<circle cx="541.0" cy="328.4" r="3.6" fill="#FF9101" />
+<circle cx="608.0" cy="327.2" r="3.6" fill="#FF9101" />
+<circle cx="675.0" cy="327.2" r="3.6" fill="#FF9101" />
+<circle cx="742.0" cy="326.0" r="3.6" fill="#FF9101" />
+<text x="407.0" y="304" font-size="13" text-anchor="middle" class="t">Layer</text>
+<text x="72" y="512" font-size="12" text-anchor="start" class="t muted">E_eff ≈ 62.9 / 64 (from entropy)</text>
+</svg>

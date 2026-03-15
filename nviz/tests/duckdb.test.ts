@@ -4,16 +4,19 @@ import { join } from 'node:path'
 import os from 'node:os'
 
 import { DuckDBInstance } from '@duckdb/node-api'
-import { allRuns, scalarsSampled } from '@/lib/server/duckdb'
+import { allRuns, scalarsSampled, selectedRuns } from '@/lib/server/duckdb'
 
 let dir: string
 let runDir: string
+let runDirB: string
 
 beforeAll(() => {
   dir = mkdtempSync(join(os.tmpdir(), 'nviz-metrics-'))
   process.env.NVIZ_METRICS_DIR = dir
   runDir = join(dir, 'runA')
+  runDirB = join(dir, 'runB')
   mkdirSync(runDir, { recursive: true })
+  mkdirSync(runDirB, { recursive: true })
 })
 
 afterAll(() => {
@@ -44,6 +47,26 @@ describe('duckdb layer', () => {
 
   it('lists runs sorted by recency', async () => {
     const runs = await allRuns()
+    expect(runs.length).toBe(1)
+    expect(runs[0].run).toBe('runA')
+    expect(runs[0].last_step).toBe(3)
+    expect(runs[0].last_ts).toBeGreaterThan(0)
+  })
+
+  it('summarizes only requested runs without scanning unrelated runs', async () => {
+    const sqlLit = (s: string) => `'${s.replaceAll("'", "''")}'`
+    const inst = await DuckDBInstance.create(':memory:')
+    const conn = await inst.connect()
+    try {
+      await conn.run(
+        `COPY (SELECT 'runB' AS run, 'train/loss' AS tag, 9::INTEGER AS step, ${Date.now()}::BIGINT AS ts_ms, 4.2::DOUBLE AS value) TO ${sqlLit(join(runDirB, 'step_00000009.parquet'))} (FORMAT PARQUET)`
+      )
+    } finally {
+      try { await conn.close() } catch {}
+      try { await inst.close() } catch {}
+    }
+
+    const runs = await selectedRuns(['runA'])
     expect(runs.length).toBe(1)
     expect(runs[0].run).toBe('runA')
     expect(runs[0].last_step).toBe(3)

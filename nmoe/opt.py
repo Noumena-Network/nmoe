@@ -32,6 +32,52 @@ def _get_rdep_ext():
   return _rdep_ext
 
 
+def _snapshot_params(params: list[torch.nn.Parameter]) -> list[tuple[torch.nn.Parameter, torch.Tensor]]:
+  out: list[tuple[torch.nn.Parameter, torch.Tensor]] = []
+  for p in params:
+    out.append((p, p.detach().float().clone()))
+  return out
+
+
+def _summarize_param_snapshot(
+  snapshot: list[tuple[torch.nn.Parameter, torch.Tensor]],
+  *,
+  lr: float,
+  weight_decay: float,
+) -> dict[str, float | None]:
+  if not snapshot:
+    return {}
+  device = snapshot[0][0].device
+  acc = torch.zeros(5, device=device, dtype=torch.float64)
+  wd_scale = float(lr) * float(weight_decay)
+  for p, before in snapshot:
+    after = p.detach().float()
+    total_update = before - after
+    wd_update = before.mul(wd_scale) if wd_scale > 0.0 else torch.zeros_like(before)
+    optimizer_update = total_update - wd_update
+    acc[0] += (total_update * total_update).sum(dtype=torch.float64)
+    acc[1] += (optimizer_update * optimizer_update).sum(dtype=torch.float64)
+    acc[2] += (wd_update * wd_update).sum(dtype=torch.float64)
+    acc[3] += (before * before).sum(dtype=torch.float64)
+    acc[4] += float(p.numel())
+  if dist.is_available() and dist.is_initialized():
+    dist.all_reduce(acc, op=dist.ReduceOp.SUM)
+  update_sq, opt_sq, wd_sq, pre_param_sq, count = [float(x.item()) for x in acc]
+  pre_param_norm = math.sqrt(pre_param_sq) if pre_param_sq > 0.0 else 0.0
+  update_norm = math.sqrt(update_sq) if update_sq > 0.0 else 0.0
+  optimizer_update_norm = math.sqrt(opt_sq) if opt_sq > 0.0 else 0.0
+  weight_decay_update_norm = math.sqrt(wd_sq) if wd_sq > 0.0 else 0.0
+  return {
+    'pre_param_norm': pre_param_norm,
+    'update_norm': update_norm,
+    'update_to_pre_param': (update_norm / pre_param_norm) if pre_param_norm > 0.0 else None,
+    'optimizer_update_norm': optimizer_update_norm,
+    'optimizer_update_to_pre_param': (optimizer_update_norm / pre_param_norm) if pre_param_norm > 0.0 else None,
+    'weight_decay_update_norm': weight_decay_update_norm,
+    'param_count': int(round(count)),
+  }
+
+
 class Muon(torch.optim.Optimizer):
   """Muon optimizer for 2D weight matrices.
 
@@ -244,6 +290,7 @@ class ExpertAdamW(torch.optim.Optimizer):
     super().__init__(params, defaults)
     self._moes = moe_modules
     self._base_seed_u32 = int(getattr(cfg, "seed", 0)) & 0xFFFFFFFF
+    self._nvfp4_resonance_dither = bool(getattr(cfg, "nvfp4_resonance_dither", True))
 
   def _init_state(self, p: torch.Tensor) -> dict:
     state = self.state[p]
@@ -345,6 +392,7 @@ class ExpertAdamW(torch.optim.Optimizer):
         float(weight_decay), float(eps),
         float(step_size), float(inv_bias_correction2_sqrt),
         seed_u32, step_u32,
+        int(self._nvfp4_resonance_dither),
         stream,
       )
 
@@ -562,7 +610,7 @@ def update_lr(optimizer: torch.optim.Optimizer | None, muon_optimizer: torch.opt
   return float(lr_dense)
 
 
-def step(model: torch.nn.Module, optimizer: torch.optim.Optimizer | None, muon_optimizer: torch.optim.Optimizer | None, dense_groups: list[dict], zero2_state: dict, cfg: Config, world: int) -> None:
+def step(model: torch.nn.Module, optimizer: torch.optim.Optimizer | None, muon_optimizer: torch.optim.Optimizer | None, dense_groups: list[dict], zero2_state: dict, cfg: Config, world: int, *, collect_update_stats: bool = False) -> None:
   """Optimizer step with ZeRO-2, Muon, and post-step hooks.
 
   Handles:
@@ -572,22 +620,36 @@ def step(model: torch.nn.Module, optimizer: torch.optim.Optimizer | None, muon_o
   - Post-step model updates (quantization rebuild, router bias)
   """
   # ZeRO-2 AdamW step for dense params (embeds, norms, biases, router)
+  dense_update_stats: dict[str, dict[str, float]] | None = None
   if world > 1:
-    zero2.step_dense_adamw(
+    dense_update_stats = zero2.step_dense_adamw(
       dense_groups,
       state=zero2_state,
       pg=dist.group.WORLD,
       betas=(cfg.adam_beta1, cfg.adam_beta2),
       eps=cfg.adam_eps,
+      collect_stats=(collect_update_stats and muon_optimizer is None),
     )
   else:
-    zero2.step_dense_adamw(dense_groups, state=zero2_state)
+    dense_update_stats = zero2.step_dense_adamw(
+      dense_groups,
+      state=zero2_state,
+      collect_stats=(collect_update_stats and muon_optimizer is None),
+    )
 
   # Muon step for 2D weight matrices
   if muon_optimizer is not None:
     muon_optimizer.step()
 
   # Expert optimizer step (no ZeRO-2, params already sharded via RDEP)
+  expert_snapshot: list[tuple[torch.nn.Parameter, torch.Tensor]] = []
+  expert_lr = None
+  expert_weight_decay = None
+  if collect_update_stats and optimizer is not None and optimizer.param_groups:
+    expert_params = [p for group in optimizer.param_groups for p in group['params']]
+    expert_snapshot = _snapshot_params(expert_params)
+    expert_lr = float(optimizer.param_groups[0].get('lr', 0.0))
+    expert_weight_decay = float(optimizer.param_groups[0].get('weight_decay', 0.0))
   if optimizer is not None:
     optimizer.step()
 
@@ -632,3 +694,17 @@ def step(model: torch.nn.Module, optimizer: torch.optim.Optimizer | None, muon_o
           ffn.router.update_bias(ffn.last_loads, gamma=router_bias_gamma)
         except Exception as e:
           raise RuntimeError(f"post-step router bias update failed (block={i}, ffn={type(ffn).__name__})") from e
+
+  if collect_update_stats:
+    updates: dict[str, dict[str, float | None]] = {}
+    if dense_update_stats is not None:
+      updates.update(dense_update_stats)
+    if expert_snapshot and expert_lr is not None and expert_weight_decay is not None:
+      updates['expert'] = _summarize_param_snapshot(
+        expert_snapshot,
+        lr=expert_lr,
+        weight_decay=expert_weight_decay,
+      )
+    if updates:
+      from nmoe.metrics import publish_train_signal_overrides
+      publish_train_signal_overrides(updates)

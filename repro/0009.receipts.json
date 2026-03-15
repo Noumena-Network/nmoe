@@ -1,0 +1,23 @@
+{
+  "post": "0009",
+  "title": "RDEP",
+  "evidence_tier": "paper_canonical",
+  "status": "public_reference_surface",
+  "generated_at_utc": "2026-03-09T02:59:45Z",
+  "summary": "Public paper-PDF mirror for RDEP: the site-served paper PDF that carries the canonical architecture, analysis, evaluation, and reproducibility appendix. Internal paper sources and standalone benchmark artifacts are not mirrored here.",
+  "artifacts": [
+    {
+      "kind": "paper_pdf",
+      "path": "papers/rdep-nvlink.pdf",
+      "public_asset": "/papers/rdep-nvlink.pdf"
+    }
+  ],
+  "commands": [
+    "ls papers/rdep-nvlink.pdf"
+  ],
+  "notes": [
+    "This public receipt mirrors only the paper PDF exposed on the site; it does not enumerate the internal paper source tree or standalone benchmark artifacts.",
+    "The paper remains the primary truth boundary for the quoted tables, recipes, and reproducibility appendix.",
+    "Standalone benchmark JSONs and production training logs are not currently served as public site assets and are therefore not listed as mirrored artifacts."
+  ]
+}

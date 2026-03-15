@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420" role="img">
+<style>.t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}.m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}.muted{fill:#7c7c7c}.axis{stroke:#6b6b6b;stroke-width:1}.grid{stroke:#b8b1aa;stroke-width:1;opacity:.35}.dotted{stroke-dasharray:4 4}</style>
+<text x="320" y="24" font-size="18" text-anchor="middle" class="t">Dense calibration: nmoe vs modded-nanogpt (June 2024 AdamW)</text>
+<text x="320" y="46" font-size="13" text-anchor="middle" class="t muted">Validation every 128 steps; ~5B tokens; same headline recipe, known architecture gaps</text>
+<line x1="64.0" y1="64" x2="64.0" y2="366" class="grid" />
+<text x="64.0" y="388" font-size="12" text-anchor="middle" class="t muted">0</text>
+<line x1="239.5" y1="64" x2="239.5" y2="366" class="grid" />
+<text x="239.5" y="388" font-size="12" text-anchor="middle" class="t muted">3k</text>
+<line x1="415.1" y1="64" x2="415.1" y2="366" class="grid" />
+<text x="415.1" y="388" font-size="12" text-anchor="middle" class="t muted">6k</text>
+<line x1="590.6" y1="64" x2="590.6" y2="366" class="grid" />
+<text x="590.6" y="388" font-size="12" text-anchor="middle" class="t muted">9k</text>
+<line x1="622.0" y1="64" x2="622.0" y2="366" class="grid" />
+<text x="622.0" y="388" font-size="12" text-anchor="middle" class="t muted">9536</text>
+<line x1="64" y1="329.2" x2="622" y2="329.2" class="grid" />
+<text x="54" y="333.2" font-size="12" text-anchor="end" class="t muted">4.0</text>
+<line x1="64" y1="292.3" x2="622" y2="292.3" class="grid" />
+<text x="54" y="296.3" font-size="12" text-anchor="end" class="t muted">5.0</text>
+<line x1="64" y1="255.5" x2="622" y2="255.5" class="grid" />
+<text x="54" y="259.5" font-size="12" text-anchor="end" class="t muted">6.0</text>
+<line x1="64" y1="218.7" x2="622" y2="218.7" class="grid" />
+<text x="54" y="222.7" font-size="12" text-anchor="end" class="t muted">7.0</text>
+<line x1="64" y1="181.9" x2="622" y2="181.9" class="grid" />
+<text x="54" y="185.9" font-size="12" text-anchor="end" class="t muted">8.0</text>
+<line x1="64" y1="145.0" x2="622" y2="145.0" class="grid" />
+<text x="54" y="149.0" font-size="12" text-anchor="end" class="t muted">9.0</text>
+<line x1="64" y1="108.2" x2="622" y2="108.2" class="grid" />
+<text x="54" y="112.2" font-size="12" text-anchor="end" class="t muted">10.0</text>
+<line x1="64" y1="71.4" x2="622" y2="71.4" class="grid" />
+<text x="54" y="75.4" font-size="12" text-anchor="end" class="t muted">11.0</text>
+<line x1="64" y1="366" x2="622" y2="366" class="axis" />
+<line x1="64" y1="366" x2="64" y2="64" class="axis" />
+<path d="M 64.0 72.5 L 71.5 254.2 L 79.0 283.8 L 86.5 302.9 L 94.0 317.0 L 101.4 323.7 L 108.9 327.1 L 116.4 330.4 L 123.9 332.7 L 131.4 334.6 L 138.9 335.9 L 146.4 337.1 L 153.9 337.8 L 161.4 337.9 L 168.9 340.0 L 176.3 340.7 L 183.8 340.8 L 191.3 341.8 L 198.8 342.4 L 206.3 343.1 L 213.8 343.4 L 221.3 343.7 L 228.8 343.7 L 236.3 344.4 L 243.8 344.7 L 251.2 345.1 L 258.7 345.4 L 266.2 345.6 L 273.7 345.8 L 281.2 346.0 L 288.7 345.4 L 296.2 346.2 L 303.7 346.7 L 311.2 346.8 L 318.7 347.0 L 326.1 347.1 L 333.6 347.4 L 341.1 347.4 L 348.6 347.7 L 356.1 348.0 L 363.6 348.0 L 371.1 348.2 L 378.6 348.1 L 386.1 348.2 L 393.6 348.3 L 401.0 348.5 L 408.5 348.3 L 416.0 348.3 L 423.5 348.6 L 431.0 348.6 L 438.5 348.9 L 446.0 349.0 L 453.5 349.3 L 461.0 349.1 L 468.5 349.4 L 475.9 349.6 L 483.4 349.6 L 490.9 349.5 L 498.4 349.7 L 505.9 349.9 L 513.4 350.0 L 520.9 350.2 L 528.4 350.9 L 535.9 351.5 L 543.4 351.8 L 550.8 352.2 L 558.3 352.6 L 565.8 353.1 L 573.3 353.5 L 580.8 353.9 L 588.3 354.3 L 595.8 354.7 L 603.3 355.1 L 610.8 355.5 L 618.3 355.8 L 622.0 355.8" stroke="#6b6b6b" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<path d="M 71.5 215.9 L 79.0 255.3 L 86.5 274.1 L 94.0 284.8 L 101.4 292.8 L 108.9 298.3 L 116.4 302.7 L 123.9 306.7 L 131.4 310.7 L 138.9 314.0 L 146.4 316.6 L 153.9 318.8 L 161.4 320.9 L 168.9 322.7 L 176.3 324.3 L 183.8 325.7 L 191.3 327.1 L 198.8 328.3 L 206.3 329.2 L 213.8 330.2 L 221.3 331.2 L 228.8 332.2 L 236.3 332.8 L 243.8 333.6 L 251.2 334.4 L 258.7 334.8 L 266.2 335.3 L 273.7 336.2 L 281.2 336.6 L 288.7 337.1 L 296.2 337.2 L 303.7 338.0 L 311.2 338.2 L 318.7 338.7 L 326.1 339.1 L 333.6 339.5 L 341.1 339.9 L 348.6 340.3 L 356.1 340.5 L 363.6 340.8 L 371.1 341.2 L 378.6 341.4 L 386.1 341.7 L 393.6 341.7 L 401.0 342.2 L 408.5 342.3 L 416.0 342.5 L 423.5 342.5 L 431.0 343.0 L 438.5 343.3 L 446.0 343.4 L 453.5 343.7 L 461.0 343.9 L 468.5 344.0 L 475.9 344.3 L 483.4 344.4 L 490.9 344.6 L 498.4 344.7 L 505.9 344.9 L 513.4 345.1 L 520.9 345.2 L 528.4 345.5 L 535.9 345.7 L 543.4 346.3 L 550.8 346.7 L 558.3 347.0 L 565.8 347.4 L 573.3 347.7 L 580.8 347.9 L 588.3 348.1 L 595.8 348.2 L 603.3 348.3 L 610.8 348.3 L 618.3 348.3 L 622.0 348.3" stroke="#FF9101" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<rect x="360" y="68" width="12" height="12" fill="#6b6b6b" />
+<text x="376" y="78" font-size="11" text-anchor="start" class="t muted">modded-nanogpt</text>
+<rect x="484" y="68" width="12" height="12" fill="#FF9101" />
+<text x="500" y="78" font-size="11" text-anchor="start" class="t muted">nmoe dense SDPA</text>
+<text x="616" y="349.8" font-size="12" text-anchor="end" class="m muted">3.276</text>
+<text x="616" y="364.3" font-size="12" text-anchor="end" class="m muted">3.481</text>
+<text x="343.0" y="406" font-size="13" text-anchor="middle" class="t">Step</text>
+<text x="18" y="215.0" font-size="13" text-anchor="middle" class="t" transform="rotate(-90 18 215.0)">Validation loss</text>
+</svg>

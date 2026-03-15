@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="380" viewBox="0 0 680 380"
+     font-family="GT America, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif">
+
+  <!-- LEFT: TP+NCCL -->
+  <g transform="translate(10, 10)">
+    <rect x="0" y="0" width="320" height="338" rx="4" fill="#f7f3ef" stroke="#b8b1aa" stroke-width="0.5"/>
+    <text x="160" y="18" text-anchor="middle" fill="#494949" font-size="11" font-weight="bold">TP + NCCL baseline</text>
+    <text x="160" y="31" text-anchor="middle" fill="#7c7c7c" font-size="7">TP=2, EP=4 on 8 GPUs</text>
+    <g transform="translate(30, 42)">
+      <text x="0" y="0" fill="#494949" font-size="6.5" text-anchor="middle">G0</text>
+      <text x="32" y="0" fill="#494949" font-size="6.5" text-anchor="middle">G1</text>
+      <text x="64" y="0" fill="#494949" font-size="6.5" text-anchor="middle">G2</text>
+      <text x="96" y="0" fill="#494949" font-size="6.5" text-anchor="middle">G3</text>
+      <text x="128" y="0" fill="#494949" font-size="6.5" text-anchor="middle">G4</text>
+      <text x="160" y="0" fill="#494949" font-size="6.5" text-anchor="middle">G5</text>
+      <text x="192" y="0" fill="#494949" font-size="6.5" text-anchor="middle">G6</text>
+      <text x="224" y="0" fill="#494949" font-size="6.5" text-anchor="middle">G7</text>
+      <line x1="0" y1="5" x2="0" y2="248" stroke="#b8b1aa" stroke-width="0.3" opacity="0.5"/>
+      <line x1="32" y1="5" x2="32" y2="248" stroke="#b8b1aa" stroke-width="0.3" opacity="0.5"/>
+      <line x1="64" y1="5" x2="64" y2="248" stroke="#b8b1aa" stroke-width="0.3" opacity="0.5"/>
+      <line x1="96" y1="5" x2="96" y2="248" stroke="#b8b1aa" stroke-width="0.3" opacity="0.5"/>
+      <line x1="128" y1="5" x2="128" y2="248" stroke="#b8b1aa" stroke-width="0.3" opacity="0.5"/>
+      <line x1="160" y1="5" x2="160" y2="248" stroke="#b8b1aa" stroke-width="0.3" opacity="0.5"/>
+      <line x1="192" y1="5" x2="192" y2="248" stroke="#b8b1aa" stroke-width="0.3" opacity="0.5"/>
+      <line x1="224" y1="5" x2="224" y2="248" stroke="#b8b1aa" stroke-width="0.3" opacity="0.5"/>
+      <text x="245" y="14" fill="#494949" font-size="5.5">layer 1</text>
+      <rect x="-2" y="10" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.65"/>
+      <rect x="62" y="10" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.65"/>
+      <rect x="126" y="10" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.65"/>
+      <rect x="190" y="10" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.65"/>
+      <text x="245" y="26" fill="#C56A1A" font-size="5">allreduce</text>
+      <rect x="-2" y="24" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.45"/>
+      <rect x="62" y="24" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.45"/>
+      <rect x="126" y="24" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.45"/>
+      <rect x="190" y="24" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.45"/>
+      <rect x="-2" y="38" width="228" height="7" rx="1.5" fill="#FF9101" opacity="0.2" stroke="#FF9101" stroke-width="0.4"/>
+      <rect x="-2" y="50" width="228" height="7" rx="1.5" fill="#FF9101" opacity="0.2" stroke="#FF9101" stroke-width="0.4"/>
+      <text x="245" y="50" fill="#494949" font-size="5">all-to-all</text>
+      <text x="245" y="74" fill="#494949" font-size="5.5">layer 2</text>
+      <rect x="-2" y="68" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.65"/>
+      <rect x="62" y="68" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.65"/>
+      <rect x="126" y="68" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.65"/>
+      <rect x="190" y="68" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.65"/>
+      <rect x="-2" y="82" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.45"/>
+      <rect x="62" y="82" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.45"/>
+      <rect x="126" y="82" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.45"/>
+      <rect x="190" y="82" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.45"/>
+      <rect x="-2" y="96" width="228" height="7" rx="1.5" fill="#FF9101" opacity="0.2" stroke="#FF9101" stroke-width="0.4"/>
+      <rect x="-2" y="108" width="228" height="7" rx="1.5" fill="#FF9101" opacity="0.2" stroke="#FF9101" stroke-width="0.4"/>
+      <text x="245" y="132" fill="#494949" font-size="5.5">layer 3</text>
+      <rect x="-2" y="126" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.65"/>
+      <rect x="62" y="126" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.65"/>
+      <rect x="126" y="126" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.65"/>
+      <rect x="190" y="126" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.65"/>
+      <rect x="-2" y="140" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.45"/>
+      <rect x="62" y="140" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.45"/>
+      <rect x="126" y="140" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.45"/>
+      <rect x="190" y="140" width="36" height="7" rx="1.5" fill="#C56A1A" opacity="0.45"/>
+      <rect x="-2" y="154" width="228" height="7" rx="1.5" fill="#FF9101" opacity="0.2" stroke="#FF9101" stroke-width="0.4"/>
+      <rect x="-2" y="166" width="228" height="7" rx="1.5" fill="#FF9101" opacity="0.2" stroke="#FF9101" stroke-width="0.4"/>
+      <text x="112" y="188" text-anchor="middle" fill="#7c7c7c" font-size="7" font-style="italic">... x 27 layers</text>
+      <rect x="-2" y="198" width="228" height="7" rx="1.5" fill="#b8b1aa" opacity="0.25"/>
+      <text x="112" y="218" text-anchor="middle" fill="#7c7c7c" font-size="6.5">final DDP gradient allreduce</text>
+    </g>
+    <text x="16" y="280" fill="#494949" font-size="7.5">Per layer: 4 TP allreduces + 2 EP all-to-alls</text>
+    <text x="16" y="294" fill="#494949" font-size="7.5">27 layers: 108 allreduces + 54 all-to-alls</text>
+    <text x="16" y="310" fill="#C56A1A" font-size="7.5" font-weight="bold">Every layer interrupted by collectives</text>
+  </g>
+
+  <!-- RIGHT: RDEP -->
+  <g transform="translate(350, 10)">
+    <rect x="0" y="0" width="320" height="348" rx="4" fill="#f7f3ef" stroke="#b8b1aa" stroke-width="0.5"/>
+    <text x="160" y="18" text-anchor="middle" fill="#494949" font-size="11" font-weight="bold">RDEP</text>
+    <text x="160" y="31" text-anchor="middle" fill="#7c7c7c" font-size="7">DP=8, TP=1, EP=8</text>
+    <g transform="translate(30, 42)">
+      <text x="0" y="0" fill="#494949" font-size="6.5" text-anchor="middle">G0</text>
+      <text x="32" y="0" fill="#494949" font-size="6.5" text-anchor="middle">G1</text>
+      <text x="64" y="0" fill="#494949" font-size="6.5" text-anchor="middle">G2</text>
+      <text x="96" y="0" fill="#494949" font-size="6.5" text-anchor="middle">G3</text>
+      <text x="128" y="0" fill="#494949" font-size="6.5" text-anchor="middle">G4</text>
+      <text x="160" y="0" fill="#494949" font-size="6.5" text-anchor="middle">G5</text>
+      <text x="192" y="0" fill="#494949" font-size="6.5" text-anchor="middle">G6</text>
+      <text x="224" y="0" fill="#494949" font-size="6.5" text-anchor="middle">G7</text>
+      <line x1="0" y1="5" x2="0" y2="248" stroke="#b8b1aa" stroke-width="0.3" opacity="0.5"/>
+      <line x1="32" y1="5" x2="32" y2="248" stroke="#b8b1aa" stroke-width="0.3" opacity="0.5"/>
+      <line x1="64" y1="5" x2="64" y2="248" stroke="#b8b1aa" stroke-width="0.3" opacity="0.5"/>
+      <line x1="96" y1="5" x2="96" y2="248" stroke="#b8b1aa" stroke-width="0.3" opacity="0.5"/>
+      <line x1="128" y1="5" x2="128" y2="248" stroke="#b8b1aa" stroke-width="0.3" opacity="0.5"/>
+      <line x1="160" y1="5" x2="160" y2="248" stroke="#b8b1aa" stroke-width="0.3" opacity="0.5"/>
+      <line x1="192" y1="5" x2="192" y2="248" stroke="#b8b1aa" stroke-width="0.3" opacity="0.5"/>
+      <line x1="224" y1="5" x2="224" y2="248" stroke="#b8b1aa" stroke-width="0.3" opacity="0.5"/>
+      <text x="245" y="14" fill="#494949" font-size="5.5">layer 1</text>
+      <text x="245" y="24" fill="#494949" font-size="5">attn (local)</text>
+      <text x="245" y="34" fill="#494949" font-size="5">dense (local)</text>
+      <line x1="-2" y1="46" x2="228" y2="46" stroke="#FF9101" stroke-width="0.8" stroke-dasharray="4,2" opacity="0.6"/>
+      <line x1="-2" y1="52" x2="228" y2="52" stroke="#FF9101" stroke-width="0.8" stroke-dasharray="4,2" opacity="0.6"/>
+      <line x1="-2" y1="58" x2="228" y2="58" stroke="#FF9101" stroke-width="0.8" stroke-dasharray="4,2" opacity="0.5"/>
+      <line x1="-2" y1="64" x2="228" y2="64" stroke="#FF9101" stroke-width="0.8" stroke-dasharray="4,2" opacity="0.5"/>
+      <text x="245" y="56" fill="#494949" font-size="5">MoE (p2p)</text>
+      <text x="245" y="82" fill="#494949" font-size="5.5">layer 2</text>
+      <text x="245" y="92" fill="#494949" font-size="5">attn</text>
+      <text x="245" y="102" fill="#494949" font-size="5">dense</text>
+      <line x1="-2" y1="112" x2="228" y2="112" stroke="#FF9101" stroke-width="0.8" stroke-dasharray="4,2" opacity="0.6"/>
+      <line x1="-2" y1="118" x2="228" y2="118" stroke="#FF9101" stroke-width="0.8" stroke-dasharray="4,2" opacity="0.6"/>
+      <line x1="-2" y1="124" x2="228" y2="124" stroke="#FF9101" stroke-width="0.8" stroke-dasharray="4,2" opacity="0.5"/>
+      <line x1="-2" y1="130" x2="228" y2="130" stroke="#FF9101" stroke-width="0.8" stroke-dasharray="4,2" opacity="0.5"/>
+      <text x="245" y="122" fill="#494949" font-size="5">MoE</text>
+      <text x="245" y="148" fill="#494949" font-size="5.5">layer 3</text>
+      <text x="245" y="158" fill="#494949" font-size="5">attn</text>
+      <text x="245" y="168" fill="#494949" font-size="5">dense</text>
+      <line x1="-2" y1="178" x2="228" y2="178" stroke="#FF9101" stroke-width="0.8" stroke-dasharray="4,2" opacity="0.6"/>
+      <line x1="-2" y1="184" x2="228" y2="184" stroke="#FF9101" stroke-width="0.8" stroke-dasharray="4,2" opacity="0.6"/>
+      <line x1="-2" y1="190" x2="228" y2="190" stroke="#FF9101" stroke-width="0.8" stroke-dasharray="4,2" opacity="0.5"/>
+      <line x1="-2" y1="196" x2="228" y2="196" stroke="#FF9101" stroke-width="0.8" stroke-dasharray="4,2" opacity="0.5"/>
+      <text x="245" y="188" fill="#494949" font-size="5">MoE</text>
+      <text x="112" y="216" text-anchor="middle" fill="#7c7c7c" font-size="7" font-style="italic">... x 27 layers</text>
+      <rect x="-2" y="226" width="228" height="7" rx="1.5" fill="#b8b1aa" opacity="0.25"/>
+      <text x="112" y="238" text-anchor="middle" fill="#7c7c7c" font-size="6">final DDP allreduce</text>
+    </g>
+    <text x="16" y="290" fill="#494949" font-size="7.5">Per layer: 0 allreduces, 4 p2p barriers</text>
+    <text x="16" y="304" fill="#494949" font-size="7.5">Dense and attention local on every rank</text>
+    <text x="16" y="320" fill="#494949" font-size="7.5" font-weight="bold">Mostly vertical -- no collective interruptions</text>
+  </g>
+
+  <!-- LEGEND -->
+  <g transform="translate(30, 360)">
+    <rect x="0" y="-4" width="12" height="7" rx="1" fill="#C56A1A" opacity="0.65"/>
+    <text x="16" y="2" fill="#494949" font-size="7">TP allreduce</text>
+    <rect x="105" y="-4" width="12" height="7" rx="1" fill="#FF9101" opacity="0.2" stroke="#FF9101" stroke-width="0.4"/>
+    <text x="121" y="2" fill="#494949" font-size="7">EP all-to-all</text>
+    <line x1="215" y1="0" x2="235" y2="0" stroke="#FF9101" stroke-width="0.8" stroke-dasharray="4,2"/>
+    <text x="239" y="2" fill="#494949" font-size="7">p2p barrier</text>
+    <rect x="315" y="-4" width="12" height="7" rx="1" fill="#b8b1aa" opacity="0.25"/>
+    <text x="331" y="2" fill="#494949" font-size="7">DDP allreduce</text>
+  </g>
+</svg>

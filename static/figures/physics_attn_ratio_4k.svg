@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="320" viewBox="0 0 760 320" role="img" aria-label="Attention ratio sweep at seq_len=4096 (window=64). 30 layers, 3-seed mean±std; stack: mHC + Canon-ABCD + Engram.">
+<style>
+  .t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}
+  .m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}
+  .muted{fill:#7c7c7c}
+  .line{stroke:#e6e0d9;stroke-width:1}
+  .axis{stroke:#b8b1aa;stroke-width:1.2}
+  .bg{fill:#ffffff}
+</style>
+
+<rect x="0" y="0" width="760" height="320" class="bg"/>
+
+<text x="380" y="26" font-size="17" text-anchor="middle" class="t">Attention ratio sweep (seq_len=4096, window=64)</text>
+<text x="380" y="46" font-size="13" text-anchor="middle" class="t muted">30 layers · 4000 steps · 3-seed mean±std · stack: mHC + Canon-ABCD + Engram</text>
+
+<!-- table frame -->
+<line x1="60" y1="78" x2="700" y2="78" class="axis"/>
+<line x1="60" y1="260" x2="700" y2="260" class="axis"/>
+<line x1="60" y1="78" x2="60" y2="260" class="axis"/>
+<line x1="700" y1="78" x2="700" y2="260" class="axis"/>
+
+<!-- header -->
+<text x="90" y="104" font-size="12" class="t muted">arm</text>
+<text x="210" y="104" font-size="12" class="t muted">global%</text>
+<text x="330" y="104" font-size="12" class="t muted">loss</text>
+<text x="470" y="104" font-size="12" class="t muted">token_acc</text>
+<text x="610" y="104" font-size="12" class="t muted">exact_match</text>
+
+<line x1="60" y1="114" x2="700" y2="114" class="line"/>
+
+<!-- row separators -->
+<line x1="60" y1="150" x2="700" y2="150" class="line"/>
+<line x1="60" y1="186" x2="700" y2="186" class="line"/>
+<line x1="60" y1="222" x2="700" y2="222" class="line"/>
+
+<!-- rows -->
+<text x="90" y="138" font-size="12" class="m">G1L0</text>
+<text x="210" y="138" font-size="12" class="m">100%</text>
+<text x="330" y="138" font-size="12" class="m">5.35±0.15</text>
+<text x="470" y="138" font-size="12" class="m">0.026±0.003</text>
+<text x="610" y="138" font-size="12" class="m">0.078±0.006</text>
+
+<text x="90" y="174" font-size="12" class="m">G1L1</text>
+<text x="210" y="174" font-size="12" class="m">50%</text>
+<text x="330" y="174" font-size="12" class="m">5.34±0.18</text>
+<text x="470" y="174" font-size="12" class="m">0.027±0.004</text>
+<text x="610" y="174" font-size="12" class="m">0.078±0.005</text>
+
+<text x="90" y="210" font-size="12" class="m">G1L9</text>
+<text x="210" y="210" font-size="12" class="m">10%</text>
+<text x="330" y="210" font-size="12" class="m">5.26±0.28</text>
+<text x="470" y="210" font-size="12" class="m">0.028±0.003</text>
+<text x="610" y="210" font-size="12" class="m">0.078±0.006</text>
+
+<text x="90" y="246" font-size="12" class="m">G0L1</text>
+<text x="210" y="246" font-size="12" class="m">0%</text>
+<text x="330" y="246" font-size="12" class="m">5.48±0.06</text>
+<text x="470" y="246" font-size="12" class="m">0.025±0.004</text>
+<text x="610" y="246" font-size="12" class="m">0.079±0.005</text>
+
+<text x="60" y="292" font-size="11" text-anchor="start" class="t muted">Takeaway: exact-match is indistinguishable across arms; attention span is not a first-order lever on this suite.</text>
+</svg>
+

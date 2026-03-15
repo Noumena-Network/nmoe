@@ -1,0 +1,110 @@
+{
+  "post": "0006",
+  "title": "Super-4096",
+  "evidence_tier": "external_repro",
+  "status": "partial",
+  "generated_at_utc": "2026-03-14T03:24:36Z",
+  "summary": "Corrected-stack Super-4096 receipts: trusted baseline collapse plus the clean aux-only falsifier and matched E=1024/E=2048 controls through the 2048-step window. Loss keeps improving while collapse remains severe; aux materially changes the regime; lowering E helps but does not by itself remove hard saturation.",
+  "runs": {
+    "super4096_clean": "run_1773434558_119414",
+    "super4096_aux1e4_bias0": "run_1773441395_7407",
+    "super1024": "run_1773437178_465",
+    "super2048": "run_1773455592_12991"
+  },
+  "artifacts": [
+    {
+      "kind": "config_contract",
+      "path": "configs/speedrun/small_moe_super.toml"
+    },
+    {
+      "kind": "training_source",
+      "path": "nmoe/train.py"
+    },
+    {
+      "kind": "training_source",
+      "path": "nmoe/model.py"
+    },
+    {
+      "kind": "experiments_db",
+      "path": "blog_artifacts/0006_super4096_rerun_r2_clean_20260313/experiments.db"
+    },
+    {
+      "kind": "experiments_db",
+      "path": "blog_artifacts/0006_super4096_auxclean_pair_r1_20260313/experiments.db"
+    },
+    {
+      "kind": "experiments_db",
+      "path": "blog_artifacts/0006_super4096_bias0_aux1e4_long_r1_20260313/experiments.db"
+    },
+    {
+      "kind": "experiments_db",
+      "path": "blog_artifacts/0006_super1024_r1_20260313/experiments.db"
+    },
+    {
+      "kind": "experiments_db",
+      "path": "blog_artifacts/0006_super2048_long_r1_20260314/experiments.db"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0006_super4096_rerun_r2_clean_20260313/metrics/run_1773434558_119414/step_00000100.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0006_super4096_rerun_r2_clean_20260313/metrics/run_1773434558_119414/step_00000400.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0006_super4096_rerun_r2_clean_20260313/metrics/run_1773434558_119414/step_00000700.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0006_super4096_rerun_r2_clean_20260313/metrics/run_1773434558_119414/step_00000512.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0006_super4096_rerun_r2_clean_20260313/metrics/run_1773434558_119414/step_00002000.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0006_super4096_rerun_r2_clean_20260313/metrics/run_1773434558_119414/step_00003600.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0006_super4096_bias0_aux1e4_long_r1_20260313/metrics/run_1773441395_7407/step_00000512.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0006_super4096_bias0_aux1e4_long_r1_20260313/metrics/run_1773441395_7407/step_00002000.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0006_super1024_r1_20260313/metrics/run_1773437178_465/step_00000512.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0006_super1024_r1_20260313/metrics/run_1773437178_465/step_00002000.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0006_super2048_long_r1_20260314/metrics/run_1773455592_12991/step_00000512.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0006_super2048_long_r1_20260314/metrics/run_1773455592_12991/step_00002000.parquet"
+    }
+  ],
+  "commands": [
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/small_moe_super.toml --dtype=bf16 --steps=12000 --collect_update_stats=false",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/small_moe_super.toml --dtype=bf16 --steps=2048 --router_bias_update_rate=0.0 --aux_loss_alpha=0.0001 --collect_update_stats=false",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/small_moe_super.toml --dtype=bf16 --steps=2048 --n_routed_experts=1024 --collect_update_stats=false",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/small_moe_super.toml --dtype=bf16 --steps=2048 --n_routed_experts=2048 --collect_update_stats=false",
+    "python3 scripts/repro/verify_post_receipts.py --repo-root . --receipts-dir repro --post 0006"
+  ],
+  "notes": [
+    "Current 0006 scope uses the corrected-stack rerun and the matched 2048-step falsifier window, not the older January/March 3 baseline.",
+    "The trusted baseline and controls were run with output probes, MoE grad-health scans, and update-stat collection disabled in-pod to match the historical overhead surface; that clean toggle is not yet a first-class public CLI flag.",
+    "Clean aux-only (bias0, aux=1e-4) materially changes the regime: by step 2000 max_load is about 4.40% instead of about 13.42%, and valid/loss is 3.5728 instead of 3.6494.",
+    "Lowering E to 2048 and 1024 lowers CV and improves entropy/loss, but high-index layers still pin near the same 1/K ceiling.",
+    "Per-expert load histograms / CCDFs remain missing from this public bundle."
+  ]
+}

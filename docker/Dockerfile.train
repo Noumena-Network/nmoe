@@ -1,4 +1,4 @@
-FROM xjdr/nmoe:deps
+FROM noumena-network/nmoe:deps
 
 WORKDIR /workspace/nmoe
 

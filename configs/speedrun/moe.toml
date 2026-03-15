@@ -68,8 +68,8 @@ decay_floor = 1e-4                  # Safety floor (won't be reached)
 # =============================================================================
 # Load Balancing (Loss-Free)
 # =============================================================================
-router_bias_update_rate = 1e-4
-aux_loss_alpha = 0.0
+router_bias_update_rate = 1e-3
+aux_loss_alpha = 0.001
 
 # =============================================================================
 # Checkpointing

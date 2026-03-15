@@ -8,8 +8,8 @@
 #
 # Tokens/expert (at 12000 steps):
 #   - Super-4096: 6.3B × (7/4096) = 10.8M tokens/expert
-#   - vs MoE-64: 469M tokens/expert (43× more per expert)
-#   - vs Ultra-256: 117M tokens/expert (11× more per expert)
+#   - vs MoE-64: 589.8M tokens/expert (54.9× more per expert)
+#   - vs Ultra-256: 172.0M tokens/expert (15.9× more per expert)
 #
 # This is primarily a routing/stability test at extreme sparsity.
 #

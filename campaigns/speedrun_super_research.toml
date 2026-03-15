@@ -1,0 +1,79 @@
+name = "speedrun_super_research"
+kind = "speedrun"
+runner = "speedrun"
+description = "Eval-backed autonomous research loop for canonical super speedrun candidates. Promotes on final validation loss and requires CORE."
+
+[runtime.speedrun]
+config = "super"
+dtype = "fp8"
+eval_enabled = true
+
+[objective]
+primary_metric = "final_valid_loss"
+direction = "min"
+min_delta_abs = 0.001
+
+[objective.constraints]
+required_metrics = ["core"]
+max_final_loss = 10.0
+max_core_drop = 0.002
+
+[baseline]
+source = "campaign_receipts"
+
+[budget.benchmark]
+steps = 512
+max_wall_s = 3600
+
+[mutation]
+tier = "config_only"
+allowed_overrides = [
+  "activation",
+  "lr_dense",
+  "lr_router",
+  "lr_expert",
+  "router_bias_update_rate",
+  "aux_loss_alpha",
+  "route_scale",
+  "warmup_steps",
+  "hold_tokens",
+  "decay_tokens",
+  "decay_floor",
+]
+allowed_files = [
+  "configs/speedrun/super.toml",
+  "configs/gates/gates.toml",
+]
+
+[search]
+strategy = "llm_coordinate_descent"
+fallback_strategy = "coordinate_descent"
+max_trials = 8
+max_no_improve = 3
+candidate_prefix = "research"
+llm_recent_receipts = 8
+llm_candidate_limit = 12
+seed_overrides = { aux_loss_alpha = 0.0001 }
+
+[[search.axis]]
+key = "aux_loss_alpha"
+values = ["0.0", "0.00005", "0.00008", "0.0001", "0.00012", "0.00015", "0.00018", "0.0002", "0.00025", "0.00035", "0.0005", "0.00075", "0.001"]
+
+[[search.axis]]
+key = "router_bias_update_rate"
+values = ["0.00025", "0.0005", "0.00075", "0.001", "0.00125", "0.0015", "0.002", "0.003"]
+
+[[search.axis]]
+key = "warmup_steps"
+values = ["704", "768", "880", "960", "1056", "1152", "1232", "1408"]
+
+[[search.axis]]
+key = "lr_dense"
+values = ["0.0014", "0.0016", "0.0018", "0.0020", "0.0022"]
+
+[[search.axis]]
+key = "lr_router"
+values = ["0.0012", "0.0015", "0.0018", "0.0021", "0.0024"]
+
+[outputs]
+receipt_dir = "repro/campaign_runs"

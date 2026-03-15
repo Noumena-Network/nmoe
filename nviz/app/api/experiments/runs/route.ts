@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { listRunsForExperiment } from '@/lib/server/experiments'
-import { allRuns } from '@/lib/server/duckdb'
+import { selectedRuns } from '@/lib/server/duckdb'
 
 export async function GET(req: NextRequest) {
   const experiment_id = req.nextUrl.searchParams.get('experiment_id')
@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const runs = listRunsForExperiment(experiment_id || undefined, limit)
-    const metrics = await allRuns()
+    const metrics = await selectedRuns(runs.map((r) => r.run))
     const byRun = new Map(metrics.map((m) => [m.run, m]))
 
     const out = runs.map((r) => {
@@ -24,4 +24,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }
 }
-

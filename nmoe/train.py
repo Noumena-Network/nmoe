@@ -54,6 +54,70 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 LEADERBOARD_PATH = Path(__file__).parent.parent / "LEADERBOARD.json"
 
+def _collect_moe_grad_health_items(model: Transformer, world: int) -> list[tuple[str, float]]:
+  zero_w1: list[torch.Tensor] = []
+  zero_w2: list[torch.Tensor] = []
+  zero_w3: list[torch.Tensor] = []
+  mean_w1: list[torch.Tensor] = []
+  mean_w2: list[torch.Tensor] = []
+  mean_w3: list[torch.Tensor] = []
+  max_w1: list[torch.Tensor] = []
+  max_w2: list[torch.Tensor] = []
+  max_w3: list[torch.Tensor] = []
+
+  with torch.no_grad():
+    for blk in model.blocks:
+      ffn = getattr(blk, "ffn", None)
+      if not isinstance(ffn, MoE):
+        continue
+      for name, param, zeros, means, maxes in (
+        ("w1", ffn.W1, zero_w1, mean_w1, max_w1),
+        ("w2", ffn.W2, zero_w2, mean_w2, max_w2),
+        ("w3", ffn.W3, zero_w3, mean_w3, max_w3),
+      ):
+        del name
+        if (not param.requires_grad) or param.grad is None:
+          continue
+        grad = param.grad.detach().float()
+        zeros.append((grad == 0).to(dtype=torch.float32).mean())
+        means.append(grad.abs().mean())
+        maxes.append(grad.abs().max())
+
+  def _reduce(vals: list[torch.Tensor], *, op: str) -> float | None:
+    if not vals:
+      return None
+    stacked = torch.stack(vals)
+    if op == "max":
+      acc = stacked.max()
+    elif op == "mean":
+      acc = stacked.mean()
+    else:
+      raise ValueError(f"unsupported reduction op={op!r}")
+    if world > 1 and dist.is_available() and dist.is_initialized():
+      if op == "max":
+        dist.all_reduce(acc, op=dist.ReduceOp.MAX)
+      else:
+        dist.all_reduce(acc, op=dist.ReduceOp.SUM)
+        acc.div_(float(world))
+    return float(acc.item())
+
+  items: list[tuple[str, float]] = []
+  for name, zeros, means, maxes in (
+    ("w1", zero_w1, mean_w1, max_w1),
+    ("w2", zero_w2, mean_w2, max_w2),
+    ("w3", zero_w3, mean_w3, max_w3),
+  ):
+    zero_v = _reduce(zeros, op="mean")
+    mean_v = _reduce(means, op="mean")
+    max_v = _reduce(maxes, op="max")
+    if zero_v is not None:
+      items.append((f"train/moe_grad_zero_frac_{name}", zero_v))
+    if mean_v is not None:
+      items.append((f"train/moe_grad_abs_mean_{name}", mean_v))
+    if max_v is not None:
+      items.append((f"train/moe_grad_abs_max_{name}", max_v))
+  return items
+
 def _speedrun_hardware() -> str:
   if not torch.cuda.is_available():
     return "unknown"
@@ -198,12 +262,13 @@ def train(cfg: Config):
     if (cfg.fp4_embed_gain is None) != (cfg.fp4_logits_gain is None):
       raise ValueError(
         "NVFP4 requires both fp4_embed_gain and fp4_logits_gain to be set together "
-        "(or leave both unset for defaults)."
+        "(or leave both unset for unit-gain defaults)."
       )
     if cfg.fp4_embed_gain is None:
-      # Defaults validated on our NVFP4 speedrun/ablations.
-      cfg.fp4_embed_gain = 10.667
-      cfg.fp4_logits_gain = 0.125
+      # Keep NVFP4 on the same default embedding/logit contract as bf16/fp8.
+      # Non-unit gains remain available for explicit ablations only.
+      cfg.fp4_embed_gain = 1.0
+      cfg.fp4_logits_gain = 1.0
     if not (cfg.fp4_embed_gain > 0.0 and cfg.fp4_logits_gain > 0.0):
       raise ValueError(
         f"NVFP4 gains must be > 0 (fp4_embed_gain={cfg.fp4_embed_gain}, fp4_logits_gain={cfg.fp4_logits_gain})"
@@ -287,6 +352,7 @@ def train(cfg: Config):
     print("[nmoe] dense optimizer override: DDP + torch.optim.AdamW (bypassing ZeRO-2)")
 
   optimizer, muon_optimizer, dense_groups = build_optimizer(model, cfg)
+  extra_optimizers = {"muon": muon_optimizer} if muon_optimizer is not None else None
   dense_optimizer: torch.optim.Optimizer | None = None
   if use_ref_dense_opt:
     dense_optimizer = torch.optim.AdamW(
@@ -307,6 +373,7 @@ def train(cfg: Config):
     cfg,
     rank,
     print,
+    extra_optimizers=extra_optimizers,
   )
   last_loss: torch.Tensor | None = None
   log_every = max(1, int(getattr(cfg, 'log_every', 1)))
@@ -323,6 +390,8 @@ def train(cfg: Config):
     target_tokens_seen: int | None = None
     target_val_loss: float | None = None
     target_train_time_ms: float | None = None
+    last_valid_loss: float | None = None
+    last_valid_bpb: float | None = None
     stop_reason: str | None = None
     steps_completed = int(start_step)
 
@@ -366,11 +435,17 @@ def train(cfg: Config):
           with time_ctx("time_ms/barrier_after_fwd"):
             dist.barrier()
 
+        probe_output_path = ((step_num + 1) == 1) or (((step_num + 1) % log_every) == 0) or ((step_num + 1) == int(cfg.steps))
+        output_path_items: list[tuple[str, float]] = []
+
         with nvtx_ctx('train/loss'), time_ctx('time_ms/loss'):
           if not hidden.is_cuda:
             raise RuntimeError("chunked_linear_cross_entropy requires CUDA tensors.")
           logits_gain = float(getattr(model, "fp4_logits_gain", getattr(model, "logits_scale_factor", 1.0)))
           x = (hidden * logits_gain).reshape(-1, hidden.shape[-1])
+          if probe_output_path:
+            hidden.retain_grad()
+            x.retain_grad()
           t = targets.reshape(-1)
           ignore_index = int(cfg.eos_token_id) if getattr(cfg, "loss_mask_eos", True) else -100
           if x.shape[0] % 8 != 0:
@@ -402,9 +477,36 @@ def train(cfg: Config):
         with nvtx_ctx('train/bwd_total'), time_ctx('time_ms/bwd_total'):
           loss.backward()
 
+        if probe_output_path:
+          try:
+            output_path_items.append(("train/lm_head_logits_gain", float(logits_gain)))
+            hidden_grad = getattr(hidden, "grad", None)
+            x_grad = getattr(x, "grad", None)
+            hidden_grad_norm = None
+            x_grad_norm = None
+            if hidden_grad is not None:
+              hidden_grad_norm = float(hidden_grad.detach().float().norm().item())
+              output_path_items.append(("train/lm_head_hidden_grad_norm", hidden_grad_norm))
+            if x_grad is not None:
+              x_grad_norm = float(x_grad.detach().float().norm().item())
+              output_path_items.append(("train/lm_head_scaled_hidden_grad_norm", x_grad_norm))
+            if hidden_grad_norm is not None and x_grad_norm is not None and x_grad_norm > 0.0:
+              output_path_items.append(("train/lm_head_hidden_to_scaled_hidden_grad_ratio", hidden_grad_norm / x_grad_norm))
+          except Exception:
+            pass
+
+        moe_grad_items: list[tuple[str, float]] = []
+        if ((step_num + 1) % log_every) == 0:
+          moe_grad_items = _collect_moe_grad_health_items(model, world)
+
         if barriers_on and world > 1 and dist.is_available() and dist.is_initialized():
           with time_ctx("time_ms/barrier_after_bwd"):
             dist.barrier()
+
+        s = step_num + 1
+        collect_update_stats = bool(getattr(cfg, 'collect_update_stats', True)) and ((s == 1) or ((s % log_every) == 0))
+        if bool(getattr(cfg, 'collect_update_stats', True)) and int(getattr(cfg, 'steps', 0)) == int(s):
+          collect_update_stats = True
 
         with nvtx_ctx('train/opt_step'), time_ctx('time_ms/opt_step'):
           if dense_optimizer is not None:
@@ -414,13 +516,21 @@ def train(cfg: Config):
             if optimizer is not None:
               optimizer.step()
           else:
-            step(model, optimizer, muon_optimizer, dense_groups, zero2_state, cfg, world)
+            step(
+              model,
+              optimizer,
+              muon_optimizer,
+              dense_groups,
+              zero2_state,
+              cfg,
+              world,
+              collect_update_stats=collect_update_stats,
+            )
 
         tokens_this_step = int(inputs.numel())
         tokens_seen += cfg.batch_size * cfg.seq_len
         last_loss = loss.detach()
 
-        s = step_num + 1
         steps_completed = int(s)
         log_training_step(
           s,
@@ -437,6 +547,15 @@ def train(cfg: Config):
           ctx=metrics_ctx,
           loader_wait_ms=loader_wait_ms,
         )
+        extra_log_items = []
+        extra_log_items.extend(output_path_items)
+        extra_log_items.extend(moe_grad_items)
+        if extra_log_items and rank == 0 and getattr(metrics_ctx, "writer", None) is not None:
+          try:
+            metrics_ctx.writer.insert_many(step=s, items=extra_log_items)
+            metrics_ctx.writer.flush_parquet(step=s)
+          except Exception:
+            pass
 
         # Fail-fast for sweeps: detect obvious numerical failures early on log steps.
         do_log = (s == 1) or ((s % log_every) == 0) or (s == int(cfg.steps))
@@ -590,10 +709,12 @@ def train(cfg: Config):
                 v_loss_val = float(v_loss.item())
                 v_bpb_val: float | None = None
                 v_bytes_val: float | None = None
+                last_valid_loss = v_loss_val
                 if bpb_enabled:
                   assert loss_sum_bpb is not None and byte_count is not None
                   v_bpb_val = float(loss_nats_to_bpb(loss_sum_bpb, byte_count).item())
                   v_bytes_val = float(byte_count.item())
+                  last_valid_bpb = v_bpb_val
 
                 if torch.cuda.is_available():
                   torch.cuda.synchronize()
@@ -711,7 +832,8 @@ def train(cfg: Config):
           checkpointer, s, tokens_seen, model,
           (dense_optimizer if dense_optimizer is not None else optimizer),
           loader, plan,
-          zero2_state, cfg, rank, config_fingerprint, checkpoint_every, print
+          zero2_state, cfg, rank, config_fingerprint, checkpoint_every, print,
+          extra_optimizers=extra_optimizers,
         )
 
     if rank == 0:
@@ -770,6 +892,8 @@ def train(cfg: Config):
       'step_to_target': int(target_step) if target_step is not None else None,
       'tokens_to_target': int(target_tokens_seen) if target_tokens_seen is not None else None,
       'val_loss_to_target': float(target_val_loss) if target_val_loss is not None else None,
+      'final_valid_loss': float(last_valid_loss) if last_valid_loss is not None else None,
+      'final_valid_bpb': float(last_valid_bpb) if last_valid_bpb is not None else None,
       'train_time_ms_to_target': float(target_train_time_ms) if target_train_time_ms is not None else None,
     }
     if exp_tracker is not None and rank == 0:

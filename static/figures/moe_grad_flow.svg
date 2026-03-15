@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="260" viewBox="0 0 640 260" role="img" aria-label="MoE gradient flow: router selects active experts; inactive experts receive no gradient.">
+<style>
+  .t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}
+  .m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}
+  .muted{fill:#7c7c7c}
+  .box{fill:#ffffff;stroke:#b8b1aa;stroke-width:1.2}
+  .accent{stroke:#FF9101;stroke-width:2}
+  .arrow{stroke:#6b6b6b;stroke-width:1.6;fill:none;marker-end:url(#arrow)}
+  .darrow{stroke:#6b6b6b;stroke-width:1.6;fill:none;stroke-dasharray:5 4;marker-end:url(#arrow)}
+</style>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b6b6b" />
+  </marker>
+</defs>
+<text x="320.0" y="24" font-size="18" text-anchor="middle" class="t">Why MoE dynamics are different</text>
+<text x="320.0" y="46" font-size="13" text-anchor="middle" class="t muted">Only selected experts see gradient signal; this creates new attractors.</text>
+<rect x="28" y="88" width="120" height="64" rx="10" class="box"/>
+<line x1="28" y1="88" x2="148" y2="88" class="accent"/>
+<text x="88.0" y="116" font-size="12" text-anchor="middle" class="t">Tokens</text>
+<rect x="170" y="88" width="120" height="64" rx="10" class="box"/>
+<line x1="170" y1="88" x2="290" y2="88" class="accent"/>
+<text x="230.0" y="116" font-size="12" text-anchor="middle" class="t">Router</text>
+<text x="230.0" y="136" font-size="11" text-anchor="middle" class="t muted">top-k</text>
+<rect x="312" y="52" width="120" height="64" rx="10" class="box"/>
+<line x1="312" y1="52" x2="432" y2="52" class="accent"/>
+<text x="372.0" y="80" font-size="12" text-anchor="middle" class="t">Active experts</text>
+<text x="372.0" y="100" font-size="11" text-anchor="middle" class="t muted">selected</text>
+<rect x="312" y="124" width="120" height="64" rx="10" class="box"/>
+<line x1="312" y1="124" x2="432" y2="124" class="accent"/>
+<text x="372.0" y="152" font-size="12" text-anchor="middle" class="t">Inactive experts</text>
+<text x="372.0" y="172" font-size="11" text-anchor="middle" class="t muted">not selected</text>
+<rect x="454" y="88" width="92" height="64" rx="10" class="box"/>
+<line x1="454" y1="88" x2="546" y2="88" class="accent"/>
+<text x="500.0" y="116" font-size="12" text-anchor="middle" class="t">Output</text>
+<rect x="568" y="88" width="44" height="64" rx="10" class="box"/>
+<line x1="568" y1="88" x2="612" y2="88" class="accent"/>
+<text x="590.0" y="116" font-size="12" text-anchor="middle" class="t">Loss</text>
+<path d="M 148 120 L 170 120" class="arrow"/>
+<path d="M 290 120 L 312 84" class="arrow"/>
+<path d="M 290 120 L 312 156" class="darrow"/>
+<path d="M 432 84 L 454 120" class="arrow"/>
+<path d="M 546 120 L 568 120" class="arrow"/>
+<path d="M 568 138 L 290 138" class="arrow"/>
+<path d="M 568 138 L 432 102" class="arrow"/>
+<path d="M 568 138 L 432 174" class="darrow"/>
+<text x="502" y="100" font-size="11" text-anchor="start" class="t muted">grad</text>
+<text x="372" y="204" font-size="11" text-anchor="middle" class="t muted">no grad</text>
+</svg>

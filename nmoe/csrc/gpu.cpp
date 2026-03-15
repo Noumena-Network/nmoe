@@ -4,6 +4,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <atomic>
+#include <dlfcn.h>
 #include <thread>
 #include <mutex>
 #include <vector>
@@ -42,25 +43,91 @@ std::atomic<int> g_interval_ms{1000};
 #if __has_include(<nvml.h>)
 #include <nvml.h>
 
+struct NVMLFns {
+  using InitV2Fn = nvmlReturn_t (*)(void);
+  using ShutdownFn = nvmlReturn_t (*)(void);
+  using DeviceGetCountV2Fn = nvmlReturn_t (*)(unsigned int*);
+  using DeviceGetHandleByIndexV2Fn = nvmlReturn_t (*)(unsigned int, nvmlDevice_t*);
+  using DeviceGetUtilizationRatesFn = nvmlReturn_t (*)(nvmlDevice_t, nvmlUtilization_t*);
+  using DeviceGetMemoryInfoFn = nvmlReturn_t (*)(nvmlDevice_t, nvmlMemory_t*);
+  using DeviceGetPowerUsageFn = nvmlReturn_t (*)(nvmlDevice_t, unsigned int*);
+  using DeviceGetEnforcedPowerLimitFn = nvmlReturn_t (*)(nvmlDevice_t, unsigned int*);
+  using DeviceGetPowerManagementLimitFn = nvmlReturn_t (*)(nvmlDevice_t, unsigned int*);
+  using DeviceGetTemperatureFn = nvmlReturn_t (*)(nvmlDevice_t, nvmlTemperatureSensors_t, unsigned int*);
+  using DeviceGetClockInfoFn = nvmlReturn_t (*)(nvmlDevice_t, nvmlClockType_t, unsigned int*);
+  using DeviceGetCurrentClocksThrottleReasonsFn = nvmlReturn_t (*)(nvmlDevice_t, unsigned long long*);
+  using DeviceGetTotalEccErrorsFn = nvmlReturn_t (*)(nvmlDevice_t, nvmlMemoryErrorType_t, nvmlEccCounterType_t, unsigned long long*);
+
+  InitV2Fn init_v2 = nullptr;
+  ShutdownFn shutdown = nullptr;
+  DeviceGetCountV2Fn device_get_count_v2 = nullptr;
+  DeviceGetHandleByIndexV2Fn device_get_handle_by_index_v2 = nullptr;
+  DeviceGetUtilizationRatesFn device_get_utilization_rates = nullptr;
+  DeviceGetMemoryInfoFn device_get_memory_info = nullptr;
+  DeviceGetPowerUsageFn device_get_power_usage = nullptr;
+  DeviceGetEnforcedPowerLimitFn device_get_enforced_power_limit = nullptr;
+  DeviceGetPowerManagementLimitFn device_get_power_management_limit = nullptr;
+  DeviceGetTemperatureFn device_get_temperature = nullptr;
+  DeviceGetClockInfoFn device_get_clock_info = nullptr;
+  DeviceGetCurrentClocksThrottleReasonsFn device_get_current_clocks_throttle_reasons = nullptr;
+  DeviceGetTotalEccErrorsFn device_get_total_ecc_errors = nullptr;
+
+  template <typename Fn>
+  static bool load_required(void* lib, const char* name, Fn& out) {
+    out = reinterpret_cast<Fn>(dlsym(lib, name));
+    return out != nullptr;
+  }
+
+  template <typename Fn>
+  static void load_optional(void* lib, const char* name, Fn& out) {
+    out = reinterpret_cast<Fn>(dlsym(lib, name));
+  }
+
+  bool load(void* lib) {
+    return load_required(lib, "nvmlInit_v2", init_v2) &&
+           load_required(lib, "nvmlShutdown", shutdown) &&
+           load_required(lib, "nvmlDeviceGetCount_v2", device_get_count_v2) &&
+           load_required(lib, "nvmlDeviceGetHandleByIndex_v2", device_get_handle_by_index_v2) &&
+           load_required(lib, "nvmlDeviceGetUtilizationRates", device_get_utilization_rates) &&
+           load_required(lib, "nvmlDeviceGetMemoryInfo", device_get_memory_info) &&
+           load_required(lib, "nvmlDeviceGetPowerUsage", device_get_power_usage) &&
+           load_required(lib, "nvmlDeviceGetTemperature", device_get_temperature) &&
+           load_required(lib, "nvmlDeviceGetClockInfo", device_get_clock_info) &&
+           load_required(lib, "nvmlDeviceGetCurrentClocksThrottleReasons", device_get_current_clocks_throttle_reasons);
+  }
+};
+
 struct NVMLContext {
   bool ok = false;
+  bool init_called = false;
+  void* lib = nullptr;
+  NVMLFns fns;
   std::vector<nvmlDevice_t> handles;
   NVMLContext() {
-    nvmlReturn_t r = nvmlInit_v2();
+    lib = dlopen("libnvidia-ml.so.1", RTLD_NOW | RTLD_LOCAL);
+    if (lib == nullptr) return;
+    if (!fns.load(lib)) return;
+    NVMLFns::load_optional(lib, "nvmlDeviceGetEnforcedPowerLimit", fns.device_get_enforced_power_limit);
+    NVMLFns::load_optional(lib, "nvmlDeviceGetPowerManagementLimit", fns.device_get_power_management_limit);
+    NVMLFns::load_optional(lib, "nvmlDeviceGetTotalEccErrors", fns.device_get_total_ecc_errors);
+
+    nvmlReturn_t r = fns.init_v2();
     if (r != NVML_SUCCESS) return;
+    init_called = true;
     unsigned int count = 0;
-    if (nvmlDeviceGetCount_v2(&count) != NVML_SUCCESS) return;
+    if (fns.device_get_count_v2(&count) != NVML_SUCCESS) return;
     handles.resize(count);
     for (unsigned i = 0; i < count; ++i) {
       nvmlDevice_t h{};
-      if (nvmlDeviceGetHandleByIndex_v2(i, &h) == NVML_SUCCESS) {
+      if (fns.device_get_handle_by_index_v2(i, &h) == NVML_SUCCESS) {
         handles[i] = h;
       }
     }
     ok = true;
   }
   ~NVMLContext() {
-    if (ok) nvmlShutdown();
+    if (init_called && fns.shutdown != nullptr) fns.shutdown();
+    if (lib != nullptr) dlclose(lib);
   }
 };
 
@@ -75,36 +142,38 @@ static void sample_once_nvml(NVMLContext& ctx, std::vector<GPUStat>& out) {
 
     // Utilization
     nvmlUtilization_t util{};
-    if (nvmlDeviceGetUtilizationRates(h, &util) == NVML_SUCCESS) {
+    if (ctx.fns.device_get_utilization_rates(h, &util) == NVML_SUCCESS) {
       s.utilization_gpu = util.gpu;
     }
     // Memory
     nvmlMemory_t mem{};
-    if (nvmlDeviceGetMemoryInfo(h, &mem) == NVML_SUCCESS) {
+    if (ctx.fns.device_get_memory_info(h, &mem) == NVML_SUCCESS) {
       s.memory_used_gib = static_cast<double>(mem.used) / (1024.0 * 1024.0 * 1024.0);
       s.memory_total_gib = static_cast<double>(mem.total) / (1024.0 * 1024.0 * 1024.0);
     }
     // Power
     unsigned int mw = 0;
-    if (nvmlDeviceGetPowerUsage(h, &mw) == NVML_SUCCESS) {
+    if (ctx.fns.device_get_power_usage(h, &mw) == NVML_SUCCESS) {
       s.power_draw_w = mw / 1000.0;
     }
-    if (nvmlDeviceGetEnforcedPowerLimit(h, &mw) == NVML_SUCCESS ||
-        nvmlDeviceGetPowerManagementLimit(h, &mw) == NVML_SUCCESS) {
+    if ((ctx.fns.device_get_enforced_power_limit != nullptr &&
+         ctx.fns.device_get_enforced_power_limit(h, &mw) == NVML_SUCCESS) ||
+        (ctx.fns.device_get_power_management_limit != nullptr &&
+         ctx.fns.device_get_power_management_limit(h, &mw) == NVML_SUCCESS)) {
       s.power_limit_w = mw / 1000.0;
     }
     // Temperature
     unsigned int tc = 0;
-    if (nvmlDeviceGetTemperature(h, NVML_TEMPERATURE_GPU, &tc) == NVML_SUCCESS) {
+    if (ctx.fns.device_get_temperature(h, NVML_TEMPERATURE_GPU, &tc) == NVML_SUCCESS) {
       s.temperature_c = tc;
     }
     // Clocks
     unsigned int clk = 0;
-    if (nvmlDeviceGetClockInfo(h, NVML_CLOCK_SM, &clk) == NVML_SUCCESS) s.clocks_sm_mhz = clk;
+    if (ctx.fns.device_get_clock_info(h, NVML_CLOCK_SM, &clk) == NVML_SUCCESS) s.clocks_sm_mhz = clk;
 
     // Decode throttle reasons into booleans (thermal, power, hw slowdown, apps clocks)
     unsigned long long thr = 0ULL;
-    if (nvmlDeviceGetCurrentClocksThrottleReasons(h, &thr) == NVML_SUCCESS) {
+    if (ctx.fns.device_get_current_clocks_throttle_reasons(h, &thr) == NVML_SUCCESS) {
 #ifdef NVML_CLOCKS_THROTTLE_REASON_SW_THERMAL_SLOWDOWN
       unsigned long long THERMAL = NVML_CLOCKS_THROTTLE_REASON_SW_THERMAL_SLOWDOWN;
 #ifdef NVML_CLOCKS_THROTTLE_REASON_HW_THERMAL_SLOWDOWN
@@ -129,8 +198,10 @@ static void sample_once_nvml(NVMLContext& ctx, std::vector<GPUStat>& out) {
 
     // ECC counters (aggregate totals); may be unsupported/disabled on some SKUs
     unsigned long long eccv = 0ULL;
-    if (nvmlDeviceGetTotalEccErrors(h, NVML_MEMORY_ERROR_TYPE_CORRECTED, NVML_AGGREGATE_ECC, &eccv) == NVML_SUCCESS) s.ecc_corrected = eccv;
-    if (nvmlDeviceGetTotalEccErrors(h, NVML_MEMORY_ERROR_TYPE_UNCORRECTED, NVML_AGGREGATE_ECC, &eccv) == NVML_SUCCESS) s.ecc_uncorrected = eccv;
+    if (ctx.fns.device_get_total_ecc_errors != nullptr &&
+        ctx.fns.device_get_total_ecc_errors(h, NVML_MEMORY_ERROR_TYPE_CORRECTED, NVML_AGGREGATE_ECC, &eccv) == NVML_SUCCESS) s.ecc_corrected = eccv;
+    if (ctx.fns.device_get_total_ecc_errors != nullptr &&
+        ctx.fns.device_get_total_ecc_errors(h, NVML_MEMORY_ERROR_TYPE_UNCORRECTED, NVML_AGGREGATE_ECC, &eccv) == NVML_SUCCESS) s.ecc_uncorrected = eccv;
 
     out.push_back(s);
   }

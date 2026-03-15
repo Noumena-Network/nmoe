@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="380" viewBox="0 0 820 380" role="img" aria-labelledby="title desc">
+  <title id="title">NVFP4 corrected gain split quartet</title>
+  <desc id="desc">Horizontal bar chart of corrected 384-step validation loss for unit, embed-only, logits-only, and old pair. Embed-only is best and logits-only is worst.</desc>
+<style>
+.t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}
+.m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}
+.muted{fill:#7c7c7c}
+.grid{stroke:#b8b1aa;stroke-width:1;opacity:.35}
+</style>
+
+  <text x="50" y="30" font-size="18" class="t">Corrected 384-step gain split</text>
+  <text x="50" y="52" font-size="13" class="t muted">Lower validation loss is better. The helpful knob is embed gain; the harmful knob is logits gain.</text>
+
+  <line x1="180" y1="90" x2="660" y2="90" class="grid"/>
+  <line x1="180" y1="155" x2="660" y2="155" class="grid"/>
+  <line x1="180" y1="220" x2="660" y2="220" class="grid"/>
+  <line x1="180" y1="285" x2="660" y2="285" class="grid"/>
+
+  <text x="50" y="98" font-size="15" class="t">embed-only</text>
+  <text x="50" y="163" font-size="15" class="t">unit</text>
+  <text x="50" y="228" font-size="15" class="t">old pair</text>
+  <text x="50" y="293" font-size="15" class="t">logits-only</text>
+
+  <rect x="180" y="76" width="452" height="30" rx="6" fill="#2E7D32" opacity="0.85"/>
+  <rect x="180" y="141" width="468" height="30" rx="6" fill="#b8b1aa" opacity="0.7"/>
+  <rect x="180" y="206" width="473" height="30" rx="6" fill="#FF9101" opacity="0.85"/>
+  <rect x="180" y="271" width="483" height="30" rx="6" fill="#C56A1A" opacity="0.85"/>
+
+  <text x="640" y="97" text-anchor="end" font-size="14" font-weight="700" class="m">4.9864</text>
+  <text x="656" y="162" text-anchor="end" font-size="14" font-weight="700" class="m">5.1676</text>
+  <text x="661" y="227" text-anchor="end" font-size="14" font-weight="700" class="m">5.2167</text>
+  <text x="671" y="292" text-anchor="end" font-size="14" font-weight="700" class="m">5.3218</text>
+
+  <text x="680" y="97" font-size="13" class="t" fill="#2E7D32">-0.1812 vs unit</text>
+  <text x="680" y="162" font-size="13" class="t muted">baseline</text>
+  <text x="680" y="227" font-size="13" class="t" fill="#FF9101">+0.0491</text>
+  <text x="680" y="292" font-size="13" class="t" fill="#C56A1A">+0.1542</text>
+
+  <text x="180" y="340" font-size="13" class="t muted">best</text>
+  <text x="650" y="340" font-size="13" text-anchor="end" class="t muted">worst</text>
+</svg>

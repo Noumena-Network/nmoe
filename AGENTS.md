@@ -66,12 +66,12 @@ This section exists because principles alone do not prevent repeated failures. T
 Our ethos: do one thing, exceedingly well — state‑of‑the‑art MoE training on B200 with RDEP — and nothing else. Elegant minimalism isn’t just fewer lines; it’s disciplined intent plus impeccable execution.
 
 Principles
-- One clear path per use-case: each supported mode (e.g., single‑GPU BF16 research, multi‑node FP8 production, dataset prep) has one explicit way to run. Avoid multiple interchangeable stacks for the same job.
+- One clear path per use-case: each supported mode (e.g., single‑GPU BF16 research, single-node multi‑GPU FP8 production, dataset prep) has one explicit way to run. Avoid multiple interchangeable stacks for the same job.
 - Small, sharp surfaces: tiny modules with crisp responsibilities; few public knobs; declarative TOML config is the source of truth.
 - Explicit over magical: no hidden background machinery or side effects; contracts and control flow are obvious.
 - Hot paths first: inner loops and comm paths are lean, predictable, and measured. If it doesn’t move tokens/s, stability, or correctness, it doesn’t live there.
 - Fail fast, fail loud: specific guardrails with actionable remedies. No silent downshifts.
-- Minimal dependencies: PyTorch + CuTeDSL + NVSHMEM. New layers must improve both clarity and performance.
+- Minimal dependencies: PyTorch + CuTeDSL. New layers must improve both clarity and performance.
 - One source of truth: one config format, one checkpoint format, one metrics schema. No duplicates to drift.
 - Test what matters: deterministic resume, conservation, invariants. No scaffolding that mirrors system complexity.
 - Container‑first reproducibility: controlled build/runtime; off‑target paths are explicit and opt‑in.

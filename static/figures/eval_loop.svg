@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="340" viewBox="0 0 720 340" role="img" aria-label="Evaluation loop: train, token-indexed checkpoints, bpb/CORE/router health, decisions.">
+<style>
+  .t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}
+  .m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}
+  .muted{fill:#7c7c7c}
+  .box{fill:#ffffff;stroke:#b8b1aa;stroke-width:1.2}
+  .head{fill:#f7f3ef;stroke:#b8b1aa;stroke-width:1.2}
+  .accent{stroke:#FF9101;stroke-width:2}
+  .arrow{stroke:#6b6b6b;stroke-width:1.6;fill:none;marker-end:url(#arrow)}
+</style>
+
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b6b6b" />
+  </marker>
+</defs>
+
+<text x="360" y="24" font-size="17" text-anchor="middle" class="t">The scientific loop: one dial, fixed checkpoints, multiple signals</text>
+<text x="360" y="42" font-size="13" text-anchor="middle" class="t muted">(smooth metric + capability overlay + MoE health diagnostics)</text>
+
+<!-- Train -->
+<rect x="30" y="82" width="150" height="70" rx="10" class="box"/>
+<line x1="30" y1="82" x2="180" y2="82" class="accent"/>
+<text x="105" y="112" font-size="13" text-anchor="middle" class="t">Train</text>
+<text x="105" y="132" font-size="11" text-anchor="middle" class="m muted">tokens_per_step fixed</text>
+
+<!-- Checkpoints -->
+<rect x="216" y="70" width="186" height="96" rx="10" class="box"/>
+<rect x="216" y="70" width="186" height="32" rx="10" class="head"/>
+<text x="309" y="92" font-size="13" text-anchor="middle" class="t">Token-indexed checkpoints</text>
+<text x="309" y="124" font-size="12" text-anchor="middle" class="t muted">evaluate at {2%, 5%, 10%, 20%}</text>
+<text x="309" y="144" font-size="12" text-anchor="middle" class="t muted">(avoid schedule confounds)</text>
+
+<path d="M 180 117 L 216 117" class="arrow"/>
+
+<!-- Metrics group -->
+<rect x="438" y="56" width="248" height="220" rx="12" class="box"/>
+<rect x="438" y="56" width="248" height="34" rx="12" class="head"/>
+<text x="562" y="78" font-size="13" text-anchor="middle" class="t">Measure</text>
+
+<rect x="454" y="104" width="216" height="40" rx="10" class="box"/>
+<text x="562" y="129" font-size="12" text-anchor="middle" class="t">valid bpb (smooth)</text>
+
+<rect x="454" y="156" width="216" height="40" rx="10" class="box"/>
+<text x="562" y="181" font-size="12" text-anchor="middle" class="t">CORE (capability)</text>
+
+<rect x="454" y="208" width="216" height="52" rx="10" class="box"/>
+<text x="562" y="231" font-size="12" text-anchor="middle" class="t">router health</text>
+<text x="562" y="249" font-size="11" text-anchor="middle" class="t muted">(CV / entropy / max_load)</text>
+
+<path d="M 402 117 L 438 117" class="arrow"/>
+
+<!-- Decisions -->
+<rect x="216" y="290" width="470" height="44" rx="10" class="box"/>
+<line x1="216" y1="290" x2="686" y2="290" class="accent"/>
+<text x="451" y="310" font-size="13" text-anchor="middle" class="t">Decide the next experiment</text>
+<text x="451" y="328" font-size="12" text-anchor="middle" class="t muted">change one dial, rerun, overlay curves</text>
+
+<!-- Feedback loop arrows -->
+<path d="M 562 276 L 562 290" class="arrow"/>
+<line x1="216" y1="334" x2="105" y2="334" stroke="#6b6b6b" stroke-width="1.6" fill="none"/>
+<path d="M 105 334 L 105 152" class="arrow"/>
+</svg>

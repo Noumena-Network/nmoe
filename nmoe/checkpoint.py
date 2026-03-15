@@ -77,6 +77,15 @@ def _safe_load(path: str) -> Optional[dict]:
         return None
 
 
+def _invalidate_weight_caches(model: torch.nn.Module) -> int:
+    invalidated = 0
+    for module in model.modules():
+        invalidate = getattr(module, 'invalidate_weight_cache', None)
+        if callable(invalidate) and invalidate():
+            invalidated += 1
+    return invalidated
+
+
 def read_latest_rd_info(base: str | Path) -> Optional[dict]:
     """Read run_info from the latest checkpoint's rd.pt, if present.
 
@@ -588,6 +597,7 @@ def build_states(
     config_fingerprint: str = "",
     zero2_state: Optional[dict[str, Any]] = None,
     plan: Optional[MixturePlan] = None,
+    extra_optimizers: Optional[Dict[str, Optional[torch.optim.Optimizer]]] = None,
 ) -> Tuple[Optional[dict[str, Any]], dict[str, Any]]:
     """Build (replicated_dense_state, rank_local_state).
 
@@ -653,6 +663,14 @@ def build_states(
         },
         'config_fingerprint': config_fingerprint,
     }
+    if extra_optimizers:
+        extra_states = {
+            str(name): opt.state_dict()
+            for name, opt in extra_optimizers.items()
+            if opt is not None
+        }
+        if extra_states:
+            dp_state['extra_optimizers'] = extra_states
     if zero2_state is not None:
         dp_state['zero2'] = zero2_state
 
@@ -664,6 +682,7 @@ def load_state(
     model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
     loader=None,
+    extra_optimizers: Optional[Dict[str, Optional[torch.optim.Optimizer]]] = None,
     print_fn=print,
 ) -> tuple[int, int, Optional[dict[str, Any]]]:
     """Load split checkpoint and restore state. Returns (step, tokens, zero2_state).
@@ -714,8 +733,36 @@ def load_state(
     print_fn(f'Loading checkpoint: {path}')
     ckpt = torch.load(path, map_location=map_location, weights_only=False)
     model.load_state_dict(ckpt['model_expert'], strict=False)
+    invalidated = _invalidate_weight_caches(model)
+    if invalidated:
+        print_fn(f"[resume] invalidated {invalidated} blockscaled weight cache(s) after load")
     if optimizer is not None and ckpt.get('optimizer') is not None:
         optimizer.load_state_dict(ckpt['optimizer'])
+    if extra_optimizers:
+        saved_extra = ckpt.get('extra_optimizers')
+        if not isinstance(saved_extra, dict):
+            required = [str(name) for name, opt in extra_optimizers.items() if opt is not None]
+            if required:
+                missing = ", ".join(sorted(required))
+                raise RuntimeError(
+                    f"checkpoint missing required extra optimizer state(s): {missing}. "
+                    "Refusing to resume without separately stepped optimizer state."
+                )
+        else:
+            missing: list[str] = []
+            for name, opt in extra_optimizers.items():
+                if opt is None:
+                    continue
+                state_dict = saved_extra.get(str(name))
+                if state_dict is None:
+                    missing.append(str(name))
+                    continue
+                opt.load_state_dict(state_dict)
+            if missing:
+                raise RuntimeError(
+                    f"checkpoint missing required extra optimizer state(s): {', '.join(sorted(missing))}. "
+                    "Refusing to resume without separately stepped optimizer state."
+                )
 
     if loader is not None and ckpt.get('loader'):
         loader.load_state_dict(ckpt['loader'])
@@ -745,6 +792,7 @@ def load_checkpoint(
     cfg,
     rank: int,
     print_fn=print,
+    extra_optimizers: Optional[Dict[str, Optional[torch.optim.Optimizer]]] = None,
 ) -> tuple[int, int, dict]:
     """Wrapper for checkpoint resume. Returns (start_step, tokens_seen, zero2_state)."""
     start_step = 0
@@ -754,7 +802,14 @@ def load_checkpoint(
     if getattr(cfg, 'resume', True):
         step, path = checkpointer.find_latest()
         if path is not None:
-            start_step, tokens_seen, z2 = load_state(path, model, optimizer, loader, print_fn)
+            start_step, tokens_seen, z2 = load_state(
+                path,
+                model,
+                optimizer,
+                loader,
+                extra_optimizers=extra_optimizers,
+                print_fn=print_fn,
+            )
             if z2 is not None:
                 zero2_state = z2
             if rank == 0:
@@ -777,12 +832,13 @@ def save_checkpoint(
     config_fingerprint: str,
     checkpoint_every: int,
     print_fn=print,
+    extra_optimizers: Optional[Dict[str, Optional[torch.optim.Optimizer]]] = None,
 ) -> None:
     """Wrapper for checkpoint save. Handles RD/DP split and finalization."""
     if (step % checkpoint_every == 0) or (step == cfg.steps):
         rd_state, dp_state = build_states(
             step, model, optimizer, tokens_seen, loader, config_fingerprint,
-            zero2_state=zero2_state, plan=plan,
+            zero2_state=zero2_state, plan=plan, extra_optimizers=extra_optimizers,
         )
         if rank == 0:
             checkpointer.save_dense(step, rd_state)

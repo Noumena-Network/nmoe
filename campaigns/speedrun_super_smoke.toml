@@ -1,0 +1,49 @@
+name = "speedrun_super_smoke"
+kind = "speedrun"
+runner = "speedrun"
+description = "Fixed-budget smoke loop for canonical super speedrun candidates."
+
+[runtime.speedrun]
+config = "super"
+dtype = "fp8"
+eval_enabled = false
+train_tokens = "16M"
+val_tokens = "1M"
+
+[objective]
+primary_metric = "final_loss"
+direction = "min"
+min_delta_abs = 0.001
+
+[objective.constraints]
+max_final_loss = 12.0
+
+[baseline]
+source = "campaign_receipts"
+
+[budget.smoke]
+steps = 32
+max_wall_s = 1800
+
+[mutation]
+tier = "config_only"
+allowed_overrides = [
+  "activation",
+  "lr_dense",
+  "lr_router",
+  "lr_expert",
+  "router_bias_update_rate",
+  "aux_loss_alpha",
+  "route_scale",
+  "warmup_steps",
+  "hold_tokens",
+  "decay_tokens",
+  "decay_floor",
+]
+allowed_files = [
+  "configs/speedrun/super.toml",
+  "configs/gates/gates.toml",
+]
+
+[outputs]
+receipt_dir = "repro/campaign_runs"

@@ -1,3 +1,14 @@
 FROM xjdr/nmoe:system
 
-RUN uv pip install tiktoken pybind11 openai_harmony numpy  nvidia-cutlass-dsl==4.3.4 cuda-python==12.9.1 duckdb apache-tvm-ffi
+RUN uv pip install \
+    tiktoken \
+    pybind11 \
+    openai_harmony \
+    numpy \
+    nvidia-cutlass-dsl==4.3.4 \
+    cuda-python==12.9.1 \
+    duckdb \
+    apache-tvm-ffi \
+    datasets \
+    typer \
+    rich

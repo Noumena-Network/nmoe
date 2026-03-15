@@ -1,13 +1,32 @@
 """n - nmoe training CLI."""
 
+import json
 import os
 import subprocess
 import time
 import shutil
+import sqlite3
+import sys
 from pathlib import Path
 
 import typer
 from rich.console import Console
+
+from nmoe.campaigns import (
+  CampaignError,
+  claim_candidate,
+  discover_campaign_specs,
+  evaluate_metrics,
+  load_campaign,
+  new_receipt_path,
+  parse_candidate_overrides,
+  propose_next_candidate,
+  release_candidate_claim,
+  resolve_receipt_dir,
+  select_baseline,
+  validate_candidate_overrides,
+  write_json,
+)
 
 app = typer.Typer(
   name="n",
@@ -15,10 +34,37 @@ app = typer.Typer(
   add_completion=False,
   no_args_is_help=True,
 )
+campaign_app = typer.Typer(
+  help="Bounded autoresearch campaigns",
+  add_completion=False,
+)
 console = Console()
 
 NMOE_ROOT = Path(__file__).parent.parent.parent
 NPROC = os.environ.get("NPROC", "8")
+PYTHON_BIN = os.environ.get("PYTHON_BIN") or sys.executable or "python"
+TORCHRUN_BIN = str(Path(PYTHON_BIN).with_name("torchrun"))
+
+
+def _extra_python_paths() -> list[str]:
+  paths = [
+    str(NMOE_ROOT),
+    str(NMOE_ROOT / "third_party" / "quack"),
+    str(NMOE_ROOT / "third_party" / "flash_attn"),
+    str(NMOE_ROOT / "triton" / "python"),
+    "/opt/third_party/quack",
+    "/opt/third_party/flash_attn",
+    "/opt/third_party/triton/python",
+  ]
+  for env_key in ("NMOE_QUACK_PATH", "NMOE_FLASH_ATTN_PATH", "NMOE_TRITON_PYTHON_PATH"):
+    value = os.environ.get(env_key, "").strip()
+    if value:
+      paths.append(value)
+  seen: list[str] = []
+  for path in paths:
+    if path and path not in seen:
+      seen.append(path)
+  return seen
 
 
 def _discover_data_dir() -> Path:
@@ -42,6 +88,19 @@ def _discover_data_dir() -> Path:
 DATA_DIR = _discover_data_dir()
 
 
+def _experiments_db_path() -> Path:
+  value = os.environ.get("NMOE_EXPERIMENTS_DB", "").strip()
+  if value:
+    return Path(value)
+  return DATA_DIR / "experiments.db"
+
+
+def _campaign_checkpoint_dir(experiment_id: str) -> Path | None:
+  if not experiment_id:
+    return None
+  return DATA_DIR / "checkpoints" / "campaigns" / experiment_id
+
+
 def _get_port(name: str, default: int) -> int:
   """Get port from env, handling service discovery collisions."""
   val = os.environ.get(f"NMOE_{name}", os.environ.get(name, str(default)))
@@ -53,6 +112,8 @@ def _get_port(name: str, default: int) -> int:
 JUPYTER_PORT = _get_port("JUPYTER_PORT", 8888)
 NVIZ_PORT = _get_port("NVIZ_PORT", 3000)
 
+app.add_typer(campaign_app, name="campaign")
+
 
 def _with_nmoe_env(env: dict | None = None) -> dict:
   """Return env with required PYTHONPATH for nmoe's vendored deps.
@@ -62,12 +123,8 @@ def _with_nmoe_env(env: dict | None = None) -> dict:
   """
   out = (env or os.environ).copy()
 
-  # Ensure quack and in-repo triton are importable.
-  required = [
-    str(NMOE_ROOT),
-    str(NMOE_ROOT / "third_party" / "quack"),
-    str(NMOE_ROOT / "triton" / "python"),
-  ]
+  # Ensure training/runtime deps are importable from vendored or image-provided roots.
+  required = _extra_python_paths()
   # Only add entries that exist on disk (allows pip-installed fallbacks).
   required = [p for p in required if Path(p).exists()]
 
@@ -81,10 +138,24 @@ def _with_nmoe_env(env: dict | None = None) -> dict:
   return out
 
 
-def run(cmd: list[str], cwd: Path | None = None, env: dict | None = None) -> None:
+def run(
+  cmd: list[str],
+  cwd: Path | None = None,
+  env: dict | None = None,
+  timeout_s: int | None = None,
+) -> None:
   """Run command, exit on failure."""
   console.print(f"[blue]>[/blue] {' '.join(cmd)}")
-  result = subprocess.run(cmd, cwd=cwd or NMOE_ROOT, env=_with_nmoe_env(env))
+  try:
+    result = subprocess.run(
+      cmd,
+      cwd=cwd or NMOE_ROOT,
+      env=_with_nmoe_env(env),
+      timeout=timeout_s,
+    )
+  except subprocess.TimeoutExpired:
+    console.print(f"[red]Command timed out after {timeout_s}s[/red]")
+    raise typer.Exit(124)
   if result.returncode != 0:
     raise typer.Exit(result.returncode)
 
@@ -99,6 +170,12 @@ def run_background(cmd: list[str], cwd: Path | None = None, env: dict | None = N
     stderr=subprocess.DEVNULL,
     env=_with_nmoe_env(env),
   )
+
+
+def _torchrun_cmd() -> list[str]:
+  if Path(TORCHRUN_BIN).exists():
+    return [TORCHRUN_BIN]
+  return [PYTHON_BIN, "-m", "torch.distributed.run"]
 
 
 def _has_npy_shards(dir_path: Path) -> bool:
@@ -125,18 +202,37 @@ def ensure_eval_bundle() -> Path:
   raise typer.Exit(1)
 
 
-def ensure_speedrun_data() -> Path:
+def _token_budget_to_int(value: str) -> int:
+  v = value.strip().upper()
+  mult = 1
+  if v.endswith("K"):
+    mult = 1_000
+    v = v[:-1]
+  elif v.endswith("M"):
+    mult = 1_000_000
+    v = v[:-1]
+  elif v.endswith("B"):
+    mult = 1_000_000_000
+    v = v[:-1]
+  return int(float(v) * mult)
+
+
+def ensure_speedrun_data(
+  *,
+  hf_dataset: str | None = None,
+  val_data_file: str | None = None,
+  train_tokens_budget: str = "10B",
+  val_tokens_budget: str = "10485760",
+) -> Path:
   """Ensure speedrun train/val datasets exist.
 
   Canonical dataset: karpathy/fineweb-edu-100b-shuffle (tokenized to GPT-2 shards).
   Returns path to DATA_DIR/speedrun.
   """
-  hf_dataset = os.environ.get("NMOE_SPEEDRUN_DATASET", "karpathy/fineweb-edu-100b-shuffle")
-  val_data_file = os.environ.get("NMOE_SPEEDRUN_VAL_DATA_FILE", "shard_01822.parquet")
-  train_tokens_budget = "10B"
-  val_tokens_budget = "10485760"
-  train_tokens_min = int(float(train_tokens_budget[:-1]) * 1_000_000_000) if train_tokens_budget.endswith("B") else int(train_tokens_budget)
-  val_tokens_min = int(val_tokens_budget)
+  hf_dataset = hf_dataset or os.environ.get("NMOE_SPEEDRUN_DATASET", "karpathy/fineweb-edu-100b-shuffle")
+  val_data_file = val_data_file or os.environ.get("NMOE_SPEEDRUN_VAL_DATA_FILE", "shard_01822.parquet")
+  train_tokens_min = _token_budget_to_int(train_tokens_budget)
+  val_tokens_min = _token_budget_to_int(val_tokens_budget)
 
   train_dir = DATA_DIR / "speedrun" / "train"
   val_dir = DATA_DIR / "speedrun" / "val"
@@ -179,7 +275,7 @@ def ensure_speedrun_data() -> Path:
   if not _has_npy_shards(train_dir):
     console.print(f"[yellow]Preparing speedrun train dataset → {train_dir}[/yellow]")
     run([
-      "python", "-m", "nmoe.data.cli", "prep",
+      PYTHON_BIN, "-m", "nmoe.data.cli", "prep",
       "--source", "hub_parquet",
       "--dataset", hf_dataset,
       "--split", "train",
@@ -198,7 +294,7 @@ def ensure_speedrun_data() -> Path:
   if not _has_npy_shards(val_dir):
     console.print(f"[yellow]Preparing speedrun val dataset → {val_dir}[/yellow]")
     run([
-      "python", "-m", "nmoe.data.cli", "prep",
+      PYTHON_BIN, "-m", "nmoe.data.cli", "prep",
       "--source", "hub_parquet",
       "--dataset", hf_dataset,
       "--split", "train",
@@ -233,7 +329,7 @@ def ensure_data(name: str, tokens: str) -> Path:
   data_path.mkdir(parents=True, exist_ok=True)
   console.print(f"[yellow]Downloading {tokens} tokens to {data_path}...[/yellow]")
   run([
-    "python", "-m", "nmoe.data.cli", "prep",
+    PYTHON_BIN, "-m", "nmoe.data.cli", "prep",
     "--source", "hf",
     "--dataset", "HuggingFaceFW/fineweb-edu",
     "--split", "train",
@@ -251,8 +347,8 @@ def ensure_data(name: str, tokens: str) -> Path:
 
 def start_training(config: str, *, data_path_override: Path | None, background: bool = False):
   """Start training, optionally in background."""
-  cmd = [
-    "torchrun", "--nproc_per_node", NPROC,
+  cmd = _torchrun_cmd() + [
+    "--nproc_per_node", NPROC,
     "-m", "nmoe.train",
     config,
   ]
@@ -348,7 +444,7 @@ def open_jupyter():
 
   # Start JupyterLab in background
   run_background([
-    "python", "-m", "jupyter", "lab",
+    PYTHON_BIN, "-m", "jupyter", "lab",
     "--ip=0.0.0.0",
     f"--port={JUPYTER_PORT}",
     "--no-browser",
@@ -383,6 +479,176 @@ SPEEDRUN_CONFIGS = {
 }
 
 LEADERBOARD_PATH = NMOE_ROOT / "LEADERBOARD.json"
+
+
+def _resolve_speedrun_config(config: str) -> str:
+  if config not in SPEEDRUN_CONFIGS:
+    console.print(f"[red]Unknown config: {config}[/red]")
+    console.print(f"[yellow]Available: {', '.join(SPEEDRUN_CONFIGS.keys())}[/yellow]")
+    raise typer.Exit(1)
+  return SPEEDRUN_CONFIGS[config]
+
+
+def _resolve_speedrun_dtype(explicit_dtype: str = "") -> str:
+  dtype = explicit_dtype or "fp8"
+
+  # Contract: speedruns default to fp8 on B200/SM100; H100/SM90 is BF16-only bring-up.
+  if explicit_dtype:
+    return dtype
+
+  arch = os.environ.get("NMOE_CUDA_ARCH", "").strip().lower()
+  if arch in ("90", "sm90", "9.0"):
+    return "bf16"
+  try:
+    import torch
+    if torch.cuda.is_available():
+      cap = tuple(torch.cuda.get_device_capability())
+      if cap == (9, 0):
+        return "bf16"
+  except Exception:
+    pass
+  return dtype
+
+
+def _build_speedrun_train_cmd(
+  config: str,
+  *,
+  explicit_dtype: str = "",
+  activation: str = "",
+  steps: int = 0,
+  experiment_id: str = "",
+  extra_overrides: dict[str, str] | None = None,
+  prepare_data: bool = True,
+  eval_enabled: bool = True,
+  train_tokens_budget: str | None = None,
+  val_tokens_budget: str | None = None,
+) -> tuple[list[str], str, str]:
+  config_path = _resolve_speedrun_config(config)
+  dtype = _resolve_speedrun_dtype(explicit_dtype)
+
+  if prepare_data:
+    speedrun_dir = ensure_speedrun_data(
+      train_tokens_budget=train_tokens_budget or "10B",
+      val_tokens_budget=val_tokens_budget or "10485760",
+    )
+    if eval_enabled:
+      ensure_eval_bundle()
+  else:
+    speedrun_dir = DATA_DIR / "speedrun"
+
+  cmd = [
+    *_torchrun_cmd(), "--nproc_per_node", NPROC,
+    "-m", "nmoe.train",
+    config_path,
+    f"--dtype={dtype}",
+    f"--data_root={DATA_DIR}",
+    f"--data_path={speedrun_dir / 'train'}",
+    f"--validation_data_path={speedrun_dir / 'val'}",
+    f"--experiments_db={_experiments_db_path()}",
+  ]
+  if eval_enabled:
+    cmd.extend([
+      "--eval_enabled=true",
+      "--eval_tasks=core",
+    ])
+  else:
+    cmd.append("--eval_enabled=false")
+  if experiment_id:
+    cmd.append(f"--experiment_id={experiment_id}")
+    checkpoint_dir = _campaign_checkpoint_dir(experiment_id)
+    if checkpoint_dir is not None:
+      cmd.append(f"--checkpoint_dir={checkpoint_dir}")
+  if steps > 0:
+    cmd.append(f"--steps={steps}")
+  if activation:
+    if activation not in ("swiglu", "relu_squared", "squared_reglu"):
+      console.print(f"[red]Unknown activation: {activation}[/red]")
+      console.print("[yellow]Available: swiglu, relu_squared, squared_reglu[/yellow]")
+      raise typer.Exit(1)
+    cmd.append(f"--activation={activation}")
+  for key, value in (extra_overrides or {}).items():
+    cmd.append(f"--{key}={value}")
+
+  return cmd, dtype, config_path
+
+
+def _latest_experiment_run(experiments_db: Path, experiment_id: str) -> dict | None:
+  if not experiments_db.exists():
+    return None
+  conn = sqlite3.connect(str(experiments_db))
+  try:
+    row = conn.execute(
+      """
+      SELECT id, status, started_at, ended_at, results_json
+      FROM runs
+      WHERE experiment_id = ?
+      ORDER BY started_at DESC
+      LIMIT 1
+      """,
+      (experiment_id,),
+    ).fetchone()
+  finally:
+    conn.close()
+  if row is None:
+    return None
+
+  results_json = row[4]
+  results = {}
+  if results_json:
+    try:
+      results = json.loads(results_json)
+    except Exception:
+      results = {}
+  return {
+    "run_id": row[0],
+    "status": row[1],
+    "started_at": row[2],
+    "ended_at": row[3],
+    "results": results,
+  }
+
+
+def _leaderboard_entry_for_experiment(experiment_id: str) -> dict | None:
+  if not LEADERBOARD_PATH.exists():
+    return None
+  try:
+    data = json.loads(LEADERBOARD_PATH.read_text())
+  except Exception:
+    return None
+
+  runs = data.get("runs", [])
+  if not isinstance(runs, list):
+    return None
+  for entry in runs:
+    if isinstance(entry, dict) and entry.get("experiment_id") == experiment_id:
+      return entry
+  return None
+
+
+def _campaign_metrics_for_experiment(experiment_id: str, experiments_db: Path) -> tuple[dict | None, dict | None, dict]:
+  run = _latest_experiment_run(experiments_db, experiment_id)
+  leaderboard_entry = _leaderboard_entry_for_experiment(experiment_id)
+
+  metrics: dict[str, object] = {}
+  if run is not None:
+    metrics.update(run.get("results", {}))
+  if leaderboard_entry is not None:
+    metrics.update(leaderboard_entry)
+    if "core_score" in leaderboard_entry and "core" not in metrics:
+      metrics["core"] = leaderboard_entry["core_score"]
+  if "core" in metrics and "core_score" not in metrics:
+    metrics["core_score"] = metrics["core"]
+  if "val_loss_to_target" in metrics and "final_valid_loss" not in metrics:
+    metrics["final_valid_loss"] = metrics["val_loss_to_target"]
+
+  return run, leaderboard_entry, metrics
+
+
+def _display_path(path: Path) -> str:
+  try:
+    return str(path.relative_to(NMOE_ROOT))
+  except ValueError:
+    return str(path)
 
 
 def _speedrun_leaderboard():
@@ -467,62 +733,17 @@ def speedrun(
     open_nmon()
     return
 
-  # Validate config
-  if config not in SPEEDRUN_CONFIGS:
-    console.print(f"[red]Unknown config: {config}[/red]")
-    console.print(f"[yellow]Available: {', '.join(SPEEDRUN_CONFIGS.keys())}[/yellow]")
-    raise typer.Exit(1)
-
-  config_path = SPEEDRUN_CONFIGS[config]
-
   # Determine dtype
   if bf16 and fp8:
     console.print("[red]Cannot use both --bf16 and --fp8[/red]")
     raise typer.Exit(1)
   dtype_explicit = "bf16" if bf16 else ("fp8" if fp8 else "")
-  dtype = dtype_explicit or "fp8"
-
-  # Auto-default dtype for speedruns based on platform.
-  # Contract: speedruns default to fp8 on B200/SM100; H100/SM90 is BF16-only bring-up.
-  if not dtype_explicit:
-    arch = os.environ.get("NMOE_CUDA_ARCH", "").strip().lower()
-    if arch in ("90", "sm90", "9.0"):
-      dtype = "bf16"
-    else:
-      try:
-        import torch
-        if torch.cuda.is_available():
-          cap = tuple(torch.cuda.get_device_capability())
-          if cap == (9, 0):
-            dtype = "bf16"
-      except Exception:
-        pass
-
-  # Ensure data exists
-  speedrun_dir = ensure_speedrun_data()
-  ensure_eval_bundle()
-
-  # Build command with dynamic paths
-  cmd = [
-    "torchrun", "--nproc_per_node", NPROC,
-    "-m", "nmoe.train",
-    config_path,
-    f"--dtype={dtype}",
-    f"--data_root={DATA_DIR}",
-    f"--data_path={speedrun_dir / 'train'}",
-    f"--validation_data_path={speedrun_dir / 'val'}",
-    f"--experiments_db={DATA_DIR / 'experiments.db'}",
-    "--eval_enabled=true",
-    "--eval_tasks=core",
-  ]
-  if steps > 0:
-    cmd.append(f"--steps={steps}")
-  if activation:
-    if activation not in ("swiglu", "relu_squared", "squared_reglu"):
-      console.print(f"[red]Unknown activation: {activation}[/red]")
-      console.print("[yellow]Available: swiglu, relu_squared, squared_reglu[/yellow]")
-      raise typer.Exit(1)
-    cmd.append(f"--activation={activation}")
+  cmd, dtype, config_path = _build_speedrun_train_cmd(
+    config,
+    explicit_dtype=dtype_explicit,
+    activation=activation,
+    steps=steps,
+  )
 
   console.print(f"\n[bold]Speedrun: {config} ({dtype})[/bold]")
   console.print(f"[dim]Config: {config_path}[/dim]\n")
@@ -536,6 +757,382 @@ def speedrun(
   run_background(cmd)
   time.sleep(2)
   open_nmon()
+
+
+@campaign_app.command(name="list")
+def campaign_list():
+  """List available bounded autoresearch campaigns."""
+  paths = discover_campaign_specs(NMOE_ROOT)
+  if not paths:
+    console.print("[yellow]No campaigns found[/yellow]")
+    return
+
+  console.print("[bold]Available campaigns:[/bold]\n")
+  for path in paths:
+    try:
+      spec = load_campaign(NMOE_ROOT, str(path))
+      stages = ", ".join(sorted(spec.budget.keys()))
+      console.print(
+        f"  {spec.name:<28} runner={spec.runner:<8} metric={spec.objective.primary_metric:<12} "
+        f"stages=({stages})  {_display_path(spec.path)}",
+        markup=False,
+      )
+    except CampaignError as e:
+      console.print(f"  [red]{path.name}[/red]  invalid: {e}")
+
+
+@campaign_app.command()
+def show(
+  campaign: str = typer.Argument(..., help="Campaign name or TOML path"),
+):
+  """Show the fully-resolved campaign spec."""
+  try:
+    spec = load_campaign(NMOE_ROOT, campaign)
+  except CampaignError as e:
+    console.print(f"[red]{e}[/red]")
+    raise typer.Exit(1)
+
+  console.print(json.dumps(spec.to_dict(), indent=2, sort_keys=True))
+
+
+def _execute_campaign_speedrun(
+  spec,
+  *,
+  stage_cfg,
+  candidate_id: str,
+  requested_overrides: dict[str, str],
+  receipt_root: Path,
+  proposal: dict | None = None,
+  dry_run: bool = False,
+) -> tuple[Path, dict, int]:
+  if spec.runner != "speedrun" or spec.speedrun is None:
+    console.print(f"[red]campaign runner {spec.runner!r} is not implemented in phase 1[/red]")
+    raise typer.Exit(1)
+
+  overrides = dict(requested_overrides)
+  validate_candidate_overrides(spec, overrides)
+
+  activation = spec.speedrun.activation
+  if "activation" in overrides:
+    activation = overrides.pop("activation")
+
+  explicit_dtype = "" if spec.speedrun.dtype == "auto" else spec.speedrun.dtype
+  if "dtype" in overrides:
+    explicit_dtype = overrides.pop("dtype")
+
+  steps = stage_cfg.steps or 0
+  if "steps" in overrides:
+    try:
+      steps = int(overrides.pop("steps"))
+    except ValueError:
+      console.print("[red]campaign override steps must be an integer[/red]")
+      raise typer.Exit(1)
+
+  baseline = select_baseline(
+    spec,
+    stage=stage_cfg.name,
+    receipt_dir=receipt_root,
+    leaderboard_path=LEADERBOARD_PATH,
+  )
+
+  ts = int(time.time())
+  resolved_candidate_id = candidate_id or f"{spec.name}_{stage_cfg.name}_{ts}"
+  experiment_id = f"campaign_{spec.name}_{stage_cfg.name}_{ts}"
+
+  cmd, dtype, config_path = _build_speedrun_train_cmd(
+    spec.speedrun.config,
+    explicit_dtype=explicit_dtype,
+    activation=activation,
+    steps=steps,
+    experiment_id=experiment_id,
+    extra_overrides=overrides,
+    prepare_data=not dry_run,
+    eval_enabled=spec.speedrun.eval_enabled,
+    train_tokens_budget=spec.speedrun.train_tokens,
+    val_tokens_budget=spec.speedrun.val_tokens,
+  )
+
+  receipt_path = new_receipt_path(
+    spec,
+    stage=stage_cfg.name,
+    candidate_id=resolved_candidate_id,
+    receipt_dir=receipt_root,
+  )
+  experiments_db = _experiments_db_path()
+  receipt = {
+    "schema_version": 1,
+    "campaign_name": spec.name,
+    "campaign_kind": spec.kind,
+    "candidate_id": resolved_candidate_id,
+    "stage": stage_cfg.name,
+    "status": "planned",
+    "description": spec.description,
+    "spec_path": _display_path(spec.path),
+    "receipt_path": _display_path(receipt_path),
+    "runner": spec.runner,
+    "runner_config": {
+      "config": spec.speedrun.config,
+      "config_path": config_path,
+      "dtype": dtype,
+      "activation": activation,
+      "eval_enabled": spec.speedrun.eval_enabled,
+      "train_tokens": spec.speedrun.train_tokens,
+      "val_tokens": spec.speedrun.val_tokens,
+    },
+    "experiment_id": experiment_id,
+    "budget": {
+      "steps": stage_cfg.steps,
+      "max_wall_s": stage_cfg.max_wall_s,
+    },
+    "mutation": {
+      "tier": spec.mutation.tier,
+      "allowed_overrides": list(spec.mutation.allowed_overrides),
+      "allowed_files": list(spec.mutation.allowed_files),
+    },
+    "baseline": baseline,
+    "proposal": proposal,
+    "worker": {
+      "id": os.environ.get("NMOE_AUTORESEARCH_WORKER_ID", "").strip() or os.environ.get("HOSTNAME", "").strip() or None,
+    },
+    "overrides": dict(requested_overrides),
+    "command": cmd,
+    "started_at": None,
+    "ended_at": None,
+    "metrics": {},
+    "run": None,
+    "leaderboard_entry": None,
+    "decision": None,
+  }
+
+  console.print(f"\n[bold]Campaign:[/bold] {spec.name} [{stage_cfg.name}]")
+  console.print(f"[dim]Spec: {_display_path(spec.path)}[/dim]")
+  console.print(f"[dim]Config: {config_path} ({dtype})[/dim]")
+  if baseline is None:
+    console.print("[dim]Baseline: none[/dim]")
+  else:
+    baseline_metrics = baseline.get("metrics", {})
+    baseline_value = baseline_metrics.get(spec.objective.primary_metric)
+    console.print(
+      f"[dim]Baseline: {baseline.get('source')} "
+      f"{spec.objective.primary_metric}={baseline_value}[/dim]"
+    )
+
+  if dry_run:
+    console.print("")
+    console.print(json.dumps(receipt, indent=2, sort_keys=True))
+    return receipt_path, receipt, 0
+
+  receipt["status"] = "running"
+  receipt["started_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+  write_json(receipt_path, receipt)
+
+  exit_code = 0
+  try:
+    run(cmd, timeout_s=stage_cfg.max_wall_s)
+  except typer.Exit as exc:
+    exit_code = int(exc.exit_code)
+
+  run_record, leaderboard_entry, metrics = _campaign_metrics_for_experiment(experiment_id, experiments_db)
+  receipt["ended_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+  receipt["metrics"] = metrics
+  receipt["run"] = run_record
+  receipt["leaderboard_entry"] = leaderboard_entry
+
+  if exit_code != 0:
+    receipt["status"] = "failed"
+    if metrics:
+      receipt["decision"] = evaluate_metrics(spec, metrics, baseline)
+    else:
+      receipt["decision"] = {
+        "primary_metric": spec.objective.primary_metric,
+        "direction": spec.objective.direction,
+        "current_value": None,
+        "baseline_value": None,
+        "constraints_pass": False,
+        "constraint_failures": ["runner exited non-zero"],
+        "improved": False,
+        "kept": False,
+        "reason": "runner exited non-zero",
+      }
+    write_json(receipt_path, receipt)
+    return receipt_path, receipt, exit_code
+
+  decision = evaluate_metrics(spec, metrics, baseline)
+  receipt["status"] = "completed"
+  receipt["decision"] = decision
+  write_json(receipt_path, receipt)
+
+  verdict = "keep" if decision["kept"] else "discard"
+  console.print(
+    f"\n[bold]Decision:[/bold] {verdict} "
+    f"({spec.objective.primary_metric}={decision['current_value']}, reason={decision['reason']})"
+  )
+  console.print(f"[dim]Receipt: {_display_path(receipt_path)}[/dim]")
+  return receipt_path, receipt, 0
+
+
+@campaign_app.command(name="run")
+def campaign_run(
+  campaign: str = typer.Argument(..., help="Campaign name or TOML path"),
+  stage: str = typer.Option("smoke", "--stage", "-s", help="Budget stage to run"),
+  candidate: str = typer.Option("", "--candidate", "-c", help="Candidate identifier for receipts"),
+  set_: list[str] = typer.Option(None, "--set", help="Runtime override(s): key=value"),
+  receipt_dir: str = typer.Option("", "--receipt-dir", help="Override receipt directory"),
+  dry_run: bool = typer.Option(False, "--dry-run", help="Print resolved command and exit"),
+):
+  """Run a bounded campaign using the canonical nmoe runner."""
+  try:
+    spec = load_campaign(NMOE_ROOT, campaign)
+    stage_cfg = spec.stage(stage)
+    overrides = parse_candidate_overrides(list(set_ or []))
+  except CampaignError as e:
+    console.print(f"[red]{e}[/red]")
+    raise typer.Exit(1)
+
+  receipt_root = resolve_receipt_dir(spec, receipt_dir or None)
+  _, _, exit_code = _execute_campaign_speedrun(
+    spec,
+    stage_cfg=stage_cfg,
+    candidate_id=candidate,
+    requested_overrides=overrides,
+    receipt_root=receipt_root,
+    proposal=None,
+    dry_run=dry_run,
+  )
+  if exit_code != 0:
+    raise typer.Exit(exit_code)
+
+
+@campaign_app.command(name="auto")
+def campaign_auto(
+  campaign: str = typer.Argument(..., help="Campaign name or TOML path"),
+  stage: str = typer.Option("benchmark", "--stage", "-s", help="Budget stage to run"),
+  receipt_dir: str = typer.Option("", "--receipt-dir", help="Override receipt directory"),
+  max_trials: int = typer.Option(0, "--max-trials", help="Override search.max_trials"),
+  max_no_improve: int = typer.Option(0, "--max-no-improve", help="Stop after this many non-kept trials"),
+  dry_run: bool = typer.Option(False, "--dry-run", help="Print the next autonomous candidate and exit"),
+):
+  """Run a TOML-defined autonomous config search loop."""
+  try:
+    spec = load_campaign(NMOE_ROOT, campaign)
+    stage_cfg = spec.stage(stage)
+  except CampaignError as e:
+    console.print(f"[red]{e}[/red]")
+    raise typer.Exit(1)
+
+  if spec.search is None:
+    console.print(f"[red]campaign {spec.name} does not define a [search] section[/red]")
+    raise typer.Exit(1)
+
+  receipt_root = resolve_receipt_dir(spec, receipt_dir or None)
+  trial_limit = max_trials or spec.search.max_trials
+  stop_after_no_improve = max_no_improve or spec.search.max_no_improve
+  worker_id = os.environ.get("NMOE_AUTORESEARCH_WORKER_ID", "").strip() or os.environ.get("HOSTNAME", "").strip() or None
+  if trial_limit <= 0:
+    console.print("[red]max_trials must be > 0[/red]")
+    raise typer.Exit(1)
+
+  console.print(
+    f"\n[bold]Autoresearch:[/bold] {spec.name} [{stage_cfg.name}] "
+    f"strategy={spec.search.strategy} max_trials={trial_limit}"
+  )
+  if stop_after_no_improve is not None:
+    console.print(f"[dim]Stop after {stop_after_no_improve} non-kept trial(s)[/dim]")
+
+  proposal = propose_next_candidate(
+    spec,
+    stage=stage_cfg.name,
+    receipt_dir=receipt_root,
+    leaderboard_path=LEADERBOARD_PATH,
+  )
+  if proposal is None:
+    console.print("[yellow]No unexplored autonomous candidate remains for this campaign[/yellow]")
+    return
+
+  if dry_run:
+    console.print(json.dumps({
+      "campaign": spec.name,
+      "stage": stage_cfg.name,
+      "candidate_id": proposal.candidate_id,
+      "reason": proposal.reason,
+      "overrides": proposal.overrides,
+    }, indent=2, sort_keys=True))
+    return
+
+  trials_run = 0
+  consecutive_non_kept = 0
+  last_exit_code = 0
+  while trials_run < trial_limit:
+    proposal = propose_next_candidate(
+      spec,
+      stage=stage_cfg.name,
+      receipt_dir=receipt_root,
+      leaderboard_path=LEADERBOARD_PATH,
+    )
+    if proposal is None:
+      console.print("\n[yellow]Autoresearch exhausted the configured search space[/yellow]")
+      break
+
+    console.print(
+      f"\n[bold]Autoresearch Trial {trials_run + 1}/{trial_limit}:[/bold] "
+      f"{proposal.candidate_id}"
+    )
+    console.print(f"[dim]{proposal.reason}[/dim]")
+    proposal_payload = {
+      "strategy": spec.search.strategy,
+      "reason": proposal.reason,
+      "axis": proposal.axis,
+      "current_value": proposal.current_value,
+      "proposed_value": proposal.proposed_value,
+      "worker_id": worker_id,
+    }
+    claim = claim_candidate(
+      spec,
+      stage=stage_cfg.name,
+      candidate_id=proposal.candidate_id,
+      overrides=proposal.overrides,
+      receipt_dir=receipt_root,
+      proposal=proposal_payload,
+      worker_id=worker_id,
+    )
+    if claim is None:
+      console.print(f"[dim]candidate already claimed elsewhere: {proposal.candidate_id}[/dim]")
+      continue
+
+    try:
+      _, receipt, exit_code = _execute_campaign_speedrun(
+        spec,
+        stage_cfg=stage_cfg,
+        candidate_id=proposal.candidate_id,
+        requested_overrides=proposal.overrides,
+        receipt_root=receipt_root,
+        proposal=proposal_payload,
+        dry_run=False,
+      )
+    finally:
+      release_candidate_claim(
+        spec,
+        stage=stage_cfg.name,
+        candidate_id=proposal.candidate_id,
+        receipt_dir=receipt_root,
+      )
+    trials_run += 1
+    last_exit_code = exit_code
+
+    decision = receipt.get("decision") or {}
+    if bool(decision.get("kept")):
+      consecutive_non_kept = 0
+    else:
+      consecutive_non_kept += 1
+
+    if stop_after_no_improve is not None and consecutive_non_kept >= stop_after_no_improve:
+      console.print(
+        f"\n[yellow]Stopping after {consecutive_non_kept} consecutive non-kept trial(s)[/yellow]"
+      )
+      break
+
+  if last_exit_code != 0:
+    raise typer.Exit(last_exit_code)
 
 
 @app.command()
@@ -571,7 +1168,7 @@ def train(
 def list_runs(limit: int = typer.Option(20, "--limit", "-n", help="Max runs to show")):
   """List available runs."""
   from datetime import datetime
-  experiments_db = DATA_DIR / "experiments.db"
+  experiments_db = _experiments_db_path()
   metrics_dir = DATA_DIR / "metrics"
 
   run_info = []

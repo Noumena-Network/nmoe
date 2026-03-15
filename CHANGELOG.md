@@ -98,7 +98,7 @@ n speedrun
 ### Added
 - SonicMoE-style RDEP kernel fusion for expert-parallel dispatch/return
 - Blockscaled FP8/NVFP4 GEMM support for Blackwell (sm_100a)
-- Three communication modes: single-GPU, IPC (intra-node NVLink), hybrid (NVSHMEM multi-node)
+- Single-node communication modes: single-GPU and IPC (intra-node NVLink)
 - GPU-side atomics for sync (zero NCCL in hot path)
 - `nmoe/csrc/swizzle.cuh`: consolidated CUTLASS SF swizzle math
 - `nmoe/bench_moe_e2e.py`: end-to-end MoE throughput/latency benchmark

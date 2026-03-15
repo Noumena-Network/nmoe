@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="460" viewBox="0 0 640 460" role="img">
+<style>.t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}.m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}.muted{fill:#7c7c7c}.axis{stroke:#6b6b6b;stroke-width:1}.grid{stroke:#b8b1aa;stroke-width:1;opacity:.35}.dotted{stroke-dasharray:4 4}</style>
+<text x="320" y="24" font-size="18" text-anchor="middle" class="t">Super-4096: entropy and CV collapse over time</text>
+<text x="320" y="46" font-size="13" text-anchor="middle" class="t muted">Top: entropy (min vs mean across layers). Bottom: mean CV% across layers.</text>
+<line x1="64.0" y1="64" x2="64.0" y2="406" class="grid" />
+<text x="64.0" y="446" font-size="12" text-anchor="middle" class="t muted">0</text>
+<line x1="175.6" y1="64" x2="175.6" y2="406" class="grid" />
+<text x="175.6" y="446" font-size="12" text-anchor="middle" class="t muted">2.4k</text>
+<line x1="287.2" y1="64" x2="287.2" y2="406" class="grid" />
+<text x="287.2" y="446" font-size="12" text-anchor="middle" class="t muted">4.8k</text>
+<line x1="398.8" y1="64" x2="398.8" y2="406" class="grid" />
+<text x="398.8" y="446" font-size="12" text-anchor="middle" class="t muted">7.2k</text>
+<line x1="510.4" y1="64" x2="510.4" y2="406" class="grid" />
+<text x="510.4" y="446" font-size="12" text-anchor="middle" class="t muted">9.6k</text>
+<line x1="622.0" y1="64" x2="622.0" y2="406" class="grid" />
+<text x="622.0" y="446" font-size="12" text-anchor="middle" class="t muted">12k</text>
+<line x1="514.9" y1="64" x2="514.9" y2="406" class="grid dotted" />
+<text x="520.9" y="78" font-size="12" text-anchor="start" class="t muted">warmdown (~9.7k)</text>
+<line x1="64" y1="218.5" x2="622" y2="218.5" class="grid" />
+<text x="54" y="222.5" font-size="12" text-anchor="end" class="t muted">2</text>
+<line x1="64" y1="190.9" x2="622" y2="190.9" class="grid" />
+<text x="54" y="194.9" font-size="12" text-anchor="end" class="t muted">3</text>
+<line x1="64" y1="163.3" x2="622" y2="163.3" class="grid" />
+<text x="54" y="167.3" font-size="12" text-anchor="end" class="t muted">4</text>
+<line x1="64" y1="135.7" x2="622" y2="135.7" class="grid" />
+<text x="54" y="139.7" font-size="12" text-anchor="end" class="t muted">5</text>
+<line x1="64" y1="108.1" x2="622" y2="108.1" class="grid" />
+<text x="54" y="112.1" font-size="12" text-anchor="end" class="t muted">6</text>
+<line x1="64" y1="80.6" x2="622" y2="80.6" class="grid" />
+<text x="54" y="84.6" font-size="12" text-anchor="end" class="t muted">7</text>
+<path d="M 64.0 99.0 L 68.7 136.4 L 73.3 75.3 L 78.0 89.7 L 82.6 79.1 L 87.2 81.8 L 91.9 89.6 L 96.5 98.5 L 101.2 124.2 L 105.8 134.8 L 110.5 116.9 L 115.2 139.2 L 119.8 163.1 L 124.5 153.6 L 129.1 150.0 L 133.8 159.2 L 138.4 182.1 L 143.1 177.3 L 147.7 178.2 L 152.3 181.5 L 157.0 192.1 L 161.6 187.2 L 166.3 191.0 L 170.9 190.3 L 175.6 184.1 L 180.2 200.5 L 184.9 206.3 L 189.6 205.1 L 194.2 200.3 L 198.8 200.1 L 203.5 204.0 L 208.2 203.4 L 212.8 203.6 L 217.5 203.8 L 222.1 205.6 L 226.8 206.4 L 231.4 209.9 L 236.1 206.6 L 240.7 208.2 L 245.3 208.1 L 250.0 209.0 L 254.7 209.9 L 259.3 209.7 L 263.9 210.5 L 268.6 210.6 L 273.2 210.2 L 277.9 210.1 L 282.6 210.7 L 287.2 211.0 L 291.9 212.4 L 296.5 211.5 L 301.1 213.0 L 305.8 210.1 L 310.4 208.9 L 315.1 208.9 L 319.8 209.3 L 324.4 206.3 L 329.1 209.4 L 333.7 211.7 L 338.3 210.4 L 343.0 209.1 L 347.6 209.0 L 352.3 209.1 L 356.9 209.7 L 361.6 208.8 L 366.2 208.9 L 370.9 211.1 L 375.6 212.7 L 380.2 212.5 L 384.8 211.1 L 389.5 211.8 L 394.1 211.8 L 398.8 214.5 L 403.4 217.8 L 408.1 217.5 L 412.8 217.8 L 417.4 216.7 L 422.1 217.0 L 426.7 215.6 L 431.4 214.8 L 436.0 217.2 L 440.7 213.3 L 445.3 214.2 L 449.9 215.6 L 454.6 216.0 L 459.2 214.5 L 463.9 215.1 L 468.6 218.3 L 473.2 217.5 L 477.9 215.1 L 482.5 214.1 L 487.1 215.5 L 491.8 215.3 L 496.4 213.9 L 501.1 216.0 L 505.8 217.9 L 510.4 214.6 L 515.0 215.7 L 519.7 216.4 L 524.3 217.2 L 529.0 216.9 L 533.6 214.8 L 538.3 215.7 L 543.0 215.3 L 547.6 216.0 L 552.2 215.5 L 556.9 211.9 L 561.5 212.6 L 566.2 211.8 L 570.9 213.9 L 575.5 213.1 L 580.1 213.8 L 584.8 212.5 L 589.5 212.3 L 594.1 212.4 L 598.8 211.9 L 603.4 211.8 L 608.0 211.7 L 612.7 211.8 L 617.4 212.1 L 622.0 211.7" stroke="#FF9101" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<path d="M 64.0 79.1 L 68.7 117.7 L 73.3 71.8 L 78.0 73.5 L 82.6 72.6 L 87.2 74.0 L 91.9 75.5 L 96.5 77.7 L 101.2 79.7 L 105.8 83.5 L 110.5 80.6 L 115.2 83.6 L 119.8 93.5 L 124.5 91.6 L 129.1 92.4 L 133.8 93.1 L 138.4 96.0 L 143.1 96.5 L 147.7 100.1 L 152.3 103.8 L 157.0 107.4 L 161.6 110.4 L 166.3 112.4 L 170.9 116.7 L 175.6 126.7 L 180.2 134.4 L 184.9 143.0 L 189.6 145.7 L 194.2 147.7 L 198.8 153.5 L 203.5 156.4 L 208.2 158.8 L 212.8 167.0 L 217.5 169.8 L 222.1 173.3 L 226.8 174.9 L 231.4 176.3 L 236.1 177.0 L 240.7 179.8 L 245.3 180.6 L 250.0 181.4 L 254.7 182.0 L 259.3 182.0 L 263.9 185.5 L 268.6 182.9 L 273.2 182.7 L 277.9 183.8 L 282.6 184.3 L 287.2 183.6 L 291.9 183.2 L 296.5 183.6 L 301.1 183.6 L 305.8 182.7 L 310.4 184.4 L 315.1 183.2 L 319.8 183.6 L 324.4 181.4 L 329.1 185.3 L 333.7 185.6 L 338.3 182.8 L 343.0 182.6 L 347.6 182.5 L 352.3 180.7 L 356.9 180.6 L 361.6 179.4 L 366.2 181.4 L 370.9 183.0 L 375.6 183.5 L 380.2 182.1 L 384.8 183.4 L 389.5 183.2 L 394.1 183.4 L 398.8 181.9 L 403.4 184.7 L 408.1 183.1 L 412.8 182.9 L 417.4 182.8 L 422.1 182.9 L 426.7 182.2 L 431.4 181.3 L 436.0 183.9 L 440.7 180.0 L 445.3 179.9 L 449.9 181.8 L 454.6 179.4 L 459.2 179.7 L 463.9 178.4 L 468.6 178.3 L 473.2 178.9 L 477.9 178.4 L 482.5 176.9 L 487.1 177.1 L 491.8 176.3 L 496.4 175.2 L 501.1 175.4 L 505.8 175.8 L 510.4 174.2 L 515.0 174.5 L 519.7 173.6 L 524.3 172.3 L 529.0 175.3 L 533.6 174.1 L 538.3 172.9 L 543.0 173.7 L 547.6 172.3 L 552.2 170.1 L 556.9 167.8 L 561.5 166.7 L 566.2 167.3 L 570.9 166.1 L 575.5 165.5 L 580.1 162.5 L 584.8 164.9 L 589.5 162.6 L 594.1 161.3 L 598.8 161.4 L 603.4 159.5 L 608.0 159.2 L 612.7 159.2 L 617.4 159.3 L 622.0 159.3" stroke="#6b6b6b" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 4" />
+<line x1="64" y1="224" x2="622" y2="224" class="axis" />
+<line x1="64" y1="224" x2="64" y2="64" class="axis" />
+<text x="64" y="56" font-size="13" text-anchor="start" class="t">Entropy (nats)</text>
+<line x1="64" y1="406.0" x2="622" y2="406.0" class="axis" />
+<text x="54" y="410.0" font-size="12" text-anchor="end" class="t muted">0%</text>
+<line x1="64" y1="375.5" x2="622" y2="375.5" class="grid" />
+<text x="54" y="379.5" font-size="12" text-anchor="end" class="t muted">400%</text>
+<line x1="64" y1="345.0" x2="622" y2="345.0" class="grid" />
+<text x="54" y="349.0" font-size="12" text-anchor="end" class="t muted">800%</text>
+<line x1="64" y1="314.6" x2="622" y2="314.6" class="grid" />
+<text x="54" y="318.6" font-size="12" text-anchor="end" class="t muted">1200%</text>
+<line x1="64" y1="284.1" x2="622" y2="284.1" class="grid" />
+<text x="54" y="288.1" font-size="12" text-anchor="end" class="t muted">1600%</text>
+<line x1="64" y1="253.6" x2="622" y2="253.6" class="grid" />
+<text x="54" y="257.6" font-size="12" text-anchor="end" class="t muted">2000%</text>
+<path d="M 64.0 389.1 L 68.7 354.6 L 73.3 388.6 L 78.0 385.0 L 82.6 387.1 L 87.2 381.9 L 91.9 378.9 L 96.5 373.2 L 101.2 370.9 L 105.8 362.7 L 110.5 365.0 L 115.2 365.4 L 119.8 345.6 L 124.5 347.4 L 129.1 346.7 L 133.8 348.3 L 138.4 344.5 L 143.1 346.4 L 147.7 340.5 L 152.3 335.8 L 157.0 333.1 L 161.6 328.4 L 166.3 329.4 L 170.9 326.7 L 175.6 318.9 L 180.2 308.2 L 184.9 300.1 L 189.6 299.5 L 194.2 301.0 L 198.8 299.0 L 203.5 294.0 L 208.2 290.3 L 212.8 282.1 L 217.5 278.6 L 222.1 275.2 L 226.8 273.4 L 231.4 273.1 L 236.1 272.9 L 240.7 267.9 L 245.3 265.7 L 250.0 265.7 L 254.7 264.7 L 259.3 264.6 L 263.9 259.4 L 268.6 262.5 L 273.2 262.2 L 277.9 260.4 L 282.6 258.8 L 287.2 260.0 L 291.9 261.1 L 296.5 260.4 L 301.1 260.4 L 305.8 262.0 L 310.4 257.9 L 315.1 259.3 L 319.8 259.4 L 324.4 263.5 L 329.1 257.0 L 333.7 255.9 L 338.3 259.3 L 343.0 259.3 L 347.6 259.4 L 352.3 262.5 L 356.9 261.9 L 361.6 263.0 L 366.2 259.6 L 370.9 257.5 L 375.6 254.9 L 380.2 257.0 L 384.8 255.1 L 389.5 255.5 L 394.1 254.6 L 398.8 256.9 L 403.4 251.7 L 408.1 254.9 L 412.8 254.6 L 417.4 255.2 L 422.1 255.0 L 426.7 255.9 L 431.4 256.9 L 436.0 252.5 L 440.7 257.5 L 445.3 258.2 L 449.9 254.8 L 454.6 257.2 L 459.2 256.5 L 463.9 258.4 L 468.6 258.0 L 473.2 259.4 L 477.9 258.9 L 482.5 260.5 L 487.1 260.3 L 491.8 260.7 L 496.4 262.3 L 501.1 261.4 L 505.8 260.7 L 510.4 262.5 L 515.0 261.0 L 519.7 263.1 L 524.3 264.6 L 529.0 259.9 L 533.6 261.3 L 538.3 263.2 L 543.0 261.2 L 547.6 262.9 L 552.2 264.1 L 556.9 266.6 L 561.5 267.9 L 566.2 267.2 L 570.9 267.3 L 575.5 267.9 L 580.1 273.2 L 584.8 267.7 L 589.5 270.6 L 594.1 271.6 L 598.8 271.8 L 603.4 273.7 L 608.0 274.2 L 612.7 274.0 L 617.4 274.0 L 622.0 274.0" stroke="#2E7D32" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<line x1="64" y1="406" x2="622" y2="406" class="axis" />
+<line x1="64" y1="406" x2="64" y2="246" class="axis" />
+<text x="64" y="238" font-size="13" text-anchor="start" class="t">Mean CV% (across layers)</text>
+<rect x="360" y="42" width="12" height="12" fill="#FF9101" />
+<text x="376" y="52" font-size="12" text-anchor="start" class="t muted">min entropy</text>
+<rect x="360" y="58" width="12" height="12" fill="#6b6b6b" />
+<text x="376" y="68" font-size="12" text-anchor="start" class="t muted">mean entropy</text>
+<rect x="360" y="74" width="12" height="12" fill="#2E7D32" />
+<text x="376" y="84" font-size="12" text-anchor="start" class="t muted">mean CV%</text>
+<text x="343.0" y="458" font-size="13" text-anchor="middle" class="t">Step</text>
+</svg>

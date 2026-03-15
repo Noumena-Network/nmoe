@@ -245,6 +245,10 @@ __device__ __forceinline__ void st_relaxed_sys_s32(int* ptr, int val) {
     asm volatile("st.relaxed.sys.global.s32 [%0], %1;" :: "l"(ptr), "r"(val) : "memory");
 }
 
+__device__ __forceinline__ void st_relaxed_sys_b8(uint8_t* ptr, uint8_t val) {
+    asm volatile("st.relaxed.sys.global.b8 [%0], %1;" :: "l"(ptr), "h"((unsigned short)val) : "memory");
+}
+
 __device__ __forceinline__ void st_relaxed_sys_b16(uint16_t* ptr, uint16_t val) {
     asm volatile("st.relaxed.sys.global.b16 [%0], %1;" :: "l"(ptr), "h"(val) : "memory");
 }

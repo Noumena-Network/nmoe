@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="560" viewBox="0 0 980 560" role="img" aria-labelledby="title desc">
+<title id="title">Moonlet bf16 mechanism check</title>
+<desc id="desc">Two-panel figure comparing raw expert-to-dense gradient ratios and applied expert-to-dense update ratios for 1x and 15x expert learning rates in bf16 Moonlet.</desc>
+<style>
+  .t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}
+  .m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}
+  .muted{fill:#7c7c7c}
+  .grid { stroke: #b8b1aa; stroke-width: 1; opacity: .35; }
+  .axis { stroke: #6b6b6b; stroke-width: 1; }
+  .good { stroke: #2E7D32; fill: none; stroke-width: 3; }
+  .bad { stroke: #C56A1A; fill: none; stroke-width: 3; }
+</style>
+<text x="490" y="30" font-size="18" text-anchor="middle" class="t">The optimizer, not just the routing count, decides the answer</text>
+<text x="490" y="52" font-size="13" text-anchor="middle" class="t muted">bf16 update-proof runs. Left: raw expert gradients stay tiny in both lanes. Right: 1x stays near dense-scale updates while 15x overshoots badly.</text>
+<rect x="80" y="120" width="380" height="320" rx="14" fill="#f7f3ef" stroke="#b8b1aa" />
+<rect x="520" y="120" width="380" height="320" rx="14" fill="#f7f3ef" stroke="#b8b1aa" />
+<text class="t" x="270" y="150" font-size="17" font-weight="700" text-anchor="middle">raw expert/dense grad_to_param</text>
+<text class="t" x="710" y="150" font-size="17" font-weight="700" text-anchor="middle">expert/dense optimizer_update_to_pre_param</text>
+<line class="grid" x1="80" y1="440.0" x2="460" y2="440.0" />
+<text class="m muted" x="68" y="444.0" font-size="12" text-anchor="end">1e-4</text>
+<line class="grid" x1="80" y1="300.9" x2="460" y2="300.9" />
+<text class="m muted" x="68" y="304.9" font-size="12" text-anchor="end">1e-3</text>
+<line class="grid" x1="80" y1="161.9" x2="460" y2="161.9" />
+<text class="m muted" x="68" y="165.9" font-size="12" text-anchor="end">1e-2</text>
+<line class="grid" x1="520" y1="440.0" x2="900" y2="440.0" />
+<text class="m muted" x="508" y="444.0" font-size="12" text-anchor="end">0</text>
+<line class="grid" x1="520" y1="388.8" x2="900" y2="388.8" />
+<text class="m muted" x="508" y="392.8" font-size="12" text-anchor="end">2</text>
+<line class="grid" x1="520" y1="337.6" x2="900" y2="337.6" />
+<text class="m muted" x="508" y="341.6" font-size="12" text-anchor="end">4</text>
+<line class="grid" x1="520" y1="286.4" x2="900" y2="286.4" />
+<text class="m muted" x="508" y="290.4" font-size="12" text-anchor="end">6</text>
+<line class="grid" x1="520" y1="235.2" x2="900" y2="235.2" />
+<text class="m muted" x="508" y="239.2" font-size="12" text-anchor="end">8</text>
+<line class="grid" x1="520" y1="184.0" x2="900" y2="184.0" />
+<text class="m muted" x="508" y="188.0" font-size="12" text-anchor="end">10</text>
+<line class="grid" x1="520" y1="132.8" x2="900" y2="132.8" />
+<text class="m muted" x="508" y="136.8" font-size="12" text-anchor="end">12</text>
+<line class="axis" x1="80" y1="440" x2="460" y2="440" />
+<line class="axis" x1="80" y1="120" x2="80" y2="440" />
+<line class="axis" x1="520" y1="440" x2="900" y2="440" />
+<line class="axis" x1="520" y1="120" x2="520" y2="440" />
+<text class="t" x="150" y="465" font-size="13" text-anchor="middle">10</text>
+<text class="t" x="270" y="465" font-size="13" text-anchor="middle">50</text>
+<text class="t" x="390" y="465" font-size="13" text-anchor="middle">100</text>
+<text class="t" x="590" y="465" font-size="13" text-anchor="middle">10</text>
+<text class="t" x="710" y="465" font-size="13" text-anchor="middle">50</text>
+<text class="t" x="830" y="465" font-size="13" text-anchor="middle">100</text>
+<text class="t muted" x="270" y="490" font-size="13" text-anchor="middle">step</text>
+<text class="t muted" x="710" y="490" font-size="13" text-anchor="middle">step</text>
+<polyline class="good" points="150,323.4 270,296.8 390,268.2" />
+<polyline class="bad" points="150,295.7 270,319.0 390,267.1" />
+<polyline class="good" points="590,426.0 710,430.8 830,424.2" />
+<polyline class="bad" points="590,295.9 710,283.3 830,129.7" />
+<circle cx="150" cy="323.4" r="6" fill="#2E7D32" stroke="#fff" stroke-width="2" />
+<circle cx="270" cy="296.8" r="6" fill="#2E7D32" stroke="#fff" stroke-width="2" />
+<circle cx="390" cy="268.2" r="6" fill="#2E7D32" stroke="#fff" stroke-width="2" />
+<circle cx="150" cy="295.7" r="6" fill="#C56A1A" stroke="#fff" stroke-width="2" />
+<circle cx="270" cy="319.0" r="6" fill="#C56A1A" stroke="#fff" stroke-width="2" />
+<circle cx="390" cy="267.1" r="6" fill="#C56A1A" stroke="#fff" stroke-width="2" />
+<circle cx="590" cy="426.0" r="6" fill="#2E7D32" stroke="#fff" stroke-width="2" />
+<circle cx="710" cy="430.8" r="6" fill="#2E7D32" stroke="#fff" stroke-width="2" />
+<circle cx="830" cy="424.2" r="6" fill="#2E7D32" stroke="#fff" stroke-width="2" />
+<circle cx="590" cy="295.9" r="6" fill="#C56A1A" stroke="#fff" stroke-width="2" />
+<circle cx="710" cy="283.3" r="6" fill="#C56A1A" stroke="#fff" stroke-width="2" />
+<circle cx="830" cy="129.7" r="6" fill="#C56A1A" stroke="#fff" stroke-width="2" />
+<rect x="356" y="172" width="86" height="54" rx="10" fill="#f7f3ef" stroke="#b8b1aa" />
+<line x1="368" y1="192" x2="396" y2="192" class="good" /><text class="t" x="408" y="196" font-size="13">1x</text>
+<line x1="368" y1="214" x2="396" y2="214" class="bad" /><text class="t" x="408" y="218" font-size="13">15x</text>
+<text class="t muted" x="270" y="528" font-size="12" text-anchor="middle">Both lanes keep raw expert gradients tiny.</text>
+<text class="t muted" x="710" y="528" font-size="12" text-anchor="middle">Only 15x turns that tiny raw signal into an oversized applied step.</text>
+</svg>

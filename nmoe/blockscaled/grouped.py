@@ -84,6 +84,95 @@ def _swizzle_sf_to_mma(sf_mkl: torch.Tensor) -> torch.Tensor:
   # Return full padded tensor - DO NOT slice or call .contiguous() as that would
   # copy data back to row-major layout, destroying the MMA swizzle pattern!
   return sf_mma_flat.view(M_pad, sf_k_pad, 1)
+
+
+def _unswizzle_sf_from_mma(sf_mma: torch.Tensor, *, rows: int, sf_k: int) -> torch.Tensor:
+  """Invert the dense MMA swizzle back to row-major [rows, sf_k, 1]."""
+  assert sf_mma.dtype == torch.uint8 and sf_mma.ndim == 3
+  M_pad, sf_k_pad, one = sf_mma.shape
+  assert one == 1
+  flat = sf_mma.view(-1)
+  m = torch.arange(M_pad, device=sf_mma.device, dtype=torch.int64)[:, None]
+  k = torch.arange(sf_k_pad, device=sf_mma.device, dtype=torch.int64)[None, :]
+  m_32 = m % 32
+  m_4 = (m // 32) % 4
+  m_rest = m // 128
+  k_4 = k % 4
+  k_rest = k // 4
+  rest_k = sf_k_pad // 4
+  atom_offset = m_32 * 16 + m_4 * 4 + k_4
+  atom_idx = m_rest * rest_k + k_rest
+  idx = atom_idx * 512 + atom_offset
+  row_major = flat[idx.reshape(-1)].view(M_pad, sf_k_pad)
+  return row_major[:rows, :sf_k].contiguous().unsqueeze(-1)
+
+
+def _decode_e8m0(scale_bytes: torch.Tensor) -> torch.Tensor:
+  scale_i32 = scale_bytes.to(dtype=torch.int32)
+  return torch.ldexp(torch.ones_like(scale_i32, dtype=torch.float32), scale_i32 - 127)
+
+
+def _decode_nvfp4_nibbles(nibbles: torch.Tensor) -> torch.Tensor:
+  nib_i32 = nibbles.to(dtype=torch.int32)
+  sign = 1.0 - 2.0 * ((nib_i32 >> 3) & 0x1).to(dtype=torch.float32)
+  exp = (nib_i32 >> 1) & 0x3
+  mant = (nib_i32 & 0x1).to(dtype=torch.float32)
+  normal = torch.ldexp(1.0 + 0.5 * mant, exp - 1)
+  subnormal = mant * 0.5
+  return sign * torch.where(exp == 0, subnormal, normal)
+
+
+def _dequant_fp8_rows(q: torch.Tensor, scale_bytes: torch.Tensor) -> torch.Tensor:
+  if q.dtype == torch.uint16 and q.ndim == 2:
+    q_rows = q.view(torch.uint8).view(q.shape[0], q.shape[1] * 2, 1).view(torch.float8_e4m3fn).squeeze(-1)
+  elif q.dtype == torch.uint8 and q.ndim == 3:
+    q_rows = q.view(torch.float8_e4m3fn).squeeze(-1)
+  else:
+    q_rows = q.squeeze(-1)
+  q_rows = q_rows.to(dtype=torch.float32)
+  scales = _decode_e8m0(scale_bytes.squeeze(-1)).repeat_interleave(32, dim=1)
+  return (q_rows * scales[:, : q_rows.shape[1]]).to(dtype=torch.bfloat16)
+
+
+def _dequant_nvfp4_rows(q: torch.Tensor, scale_bytes: torch.Tensor) -> torch.Tensor:
+  q_u8 = q.squeeze(-1).contiguous()
+  lo = q_u8[:, 0::2].to(dtype=torch.int32)
+  hi = q_u8[:, 1::2].to(dtype=torch.int32)
+  packed = lo | (hi << 8)
+  nibbles = torch.stack([
+    packed & 0xF,
+    (packed >> 4) & 0xF,
+    (packed >> 8) & 0xF,
+    (packed >> 12) & 0xF,
+  ], dim=-1)
+  values = _decode_nvfp4_nibbles(nibbles).reshape(q_u8.shape[0], q_u8.shape[1] * 2)
+  scales = _decode_e8m0(scale_bytes.squeeze(-1)).repeat_interleave(32, dim=1)
+  return (values * scales[:, : values.shape[1]]).to(dtype=torch.bfloat16)
+
+
+def _repack_blockscaled_rows(q: torch.Tensor, sf_mma: torch.Tensor, *, src_profile: str, dst_profile: str, k_dim: int) -> tuple[torch.Tensor, torch.Tensor]:
+  if src_profile == dst_profile:
+    return q, sf_mma
+  from nmoe.quant import quantize_fp8, quantize_nvfp4
+
+  rows = int(q.shape[0])
+  sf_rowwise = _unswizzle_sf_from_mma(sf_mma, rows=rows, sf_k=k_dim // 32)
+  if src_profile == "fp8":
+    x_bf16 = _dequant_fp8_rows(q, sf_rowwise)
+  elif src_profile == "nvfp4":
+    x_bf16 = _dequant_nvfp4_rows(q, sf_rowwise)
+  else:
+    raise ValueError(f"Unsupported source profile: {src_profile}")
+
+  if dst_profile == "fp8":
+    q_dst, sf_rowwise_dst = quantize_fp8(x_bf16)
+  elif dst_profile == "nvfp4":
+    q_dst, sf_rowwise_dst = quantize_nvfp4(x_bf16)
+  else:
+    raise ValueError(f"Unsupported destination profile: {dst_profile}")
+
+  sf_dst = _swizzle_sf_to_mma(sf_rowwise_dst)
+  return q_dst, sf_dst
 # No external loader — kernel is vendored below in this file.
 
 
@@ -2502,7 +2591,8 @@ class QuantizedWeightsFused:
     E: int
     H: int
     Dff: int
-    profile: str
+    w13_profile: str
+    w2_profile: str
 
 
 def quantize_weights(
@@ -2510,6 +2600,9 @@ def quantize_weights(
     W3: torch.Tensor,
     W2: torch.Tensor,
     profile: str = 'nvfp4',
+    *,
+    w13_profile: str | None = None,
+    w2_profile: str | None = None,
 ) -> QuantizedWeightsFused:
     """Quantize weights with W13 interleaved for fused GEMM+SwiGLU path.
 
@@ -2520,20 +2613,29 @@ def quantize_weights(
         W1: [E, H, Dff] BF16 gate weights
         W3: [E, H, Dff] BF16 up weights
         W2: [E, Dff, H] BF16 down weight
-        profile: 'fp8' or 'nvfp4'
+        profile: default profile for both stages when explicit stage profiles are not given
+        w13_profile: optional override for GEMM1+2 / fused SwiGLU stage
+        w2_profile: optional override for GEMM3 / down-projection stage
 
     Returns:
         QuantizedWeightsFused with interleaved W13 and W2
     """
     # imports resolved at module top
 
+    if w13_profile is None:
+        w13_profile = profile
+    if w2_profile is None:
+        w2_profile = profile
+    if w13_profile not in ("fp8", "nvfp4"):
+        raise ValueError("w13_profile must be 'fp8' or 'nvfp4'")
+    if w2_profile not in ("fp8", "nvfp4"):
+        raise ValueError("w2_profile must be 'fp8' or 'nvfp4'")
+
     E, H, Dff = W1.shape
     if H % 128 != 0:
         raise ValueError(f"H must be a multiple of 128. Got H={H}.")
     if Dff % 128 != 0:
         raise ValueError(f"Dff must be a multiple of 128. Got Dff={Dff}.")
-    if profile not in ("fp8", "nvfp4"):
-        raise ValueError("profile must be 'fp8' or 'nvfp4'")
 
     # Use the fused quantize+pack kernel that writes SFA directly into the per-expert
     # MMA swizzle layout (no per-expert Python loops, no separate swizzle kernel).
@@ -2557,13 +2659,13 @@ def quantize_weights(
     W13_x = W13_t.view(E * M13, K13)
     offs13 = torch.arange(0, (E + 1) * M13, step=M13, device=W1.device, dtype=torch.int32)
 
-    if profile == "fp8":
+    if w13_profile == "fp8":
         W13_u16 = torch.empty((E * M13, K13 // 2), device=W1.device, dtype=torch.uint16)
     else:
         W13_u16 = torch.empty((E * M13, K13 // 4), device=W1.device, dtype=torch.uint16)
 
     W13_sf_mma = torch.empty((E, M13, sf_k13), device=W1.device, dtype=torch.uint8)
-    if profile == "fp8":
+    if w13_profile == "fp8":
         rdep.quant_fp8_sf_strided_mma(
             W13_x.data_ptr(), K13,
             W13_u16.data_ptr(), K13 // 2,
@@ -2603,13 +2705,13 @@ def quantize_weights(
     W2_x = W2_t.view(E * M2, K2)
     offs2 = torch.arange(0, (E + 1) * M2, step=M2, device=W1.device, dtype=torch.int32)
 
-    if profile == "fp8":
+    if w2_profile == "fp8":
         W2_u16 = torch.empty((E * M2, K2 // 2), device=W1.device, dtype=torch.uint16)
     else:
         W2_u16 = torch.empty((E * M2, K2 // 4), device=W1.device, dtype=torch.uint16)
 
     W2_sf_mma = torch.empty((E, M2, sf_k2), device=W1.device, dtype=torch.uint8)
-    if profile == "fp8":
+    if w2_profile == "fp8":
         rdep.quant_fp8_sf_strided_mma(
             W2_x.data_ptr(), K2,
             W2_u16.data_ptr(), K2 // 2,
@@ -2642,7 +2744,8 @@ def quantize_weights(
         E=E,
         H=H,
         Dff=Dff,
-        profile=profile,
+        w13_profile=w13_profile,
+        w2_profile=w2_profile,
     )
 
 
@@ -2654,32 +2757,27 @@ def expert_blockscaled(
     *,
     capacity_rows: int | None = None,
 ) -> torch.Tensor:
-    """Expert MLP (blockscaled) for RDEP-produced packed activations + swizzled SFA.
+    """Expert MLP (blockscaled) with optional stage-boundary profile split.
 
-    Contract (production):
-      - Xe_q_pad: [M_pad, Hp] uint16 packed activations from RDEP dispatch
-      - Xe_sf_pad: [M_pad, sf_k_pad] uint8 E8M0 SFA in MMA layout (packed by offs)
+    Contract:
+      - Xe_q_pad: [M_pad, H_pack, 1] where H_pack=H for fp8, H/2 for nvfp4
+      - Xe_sf_pad: [M_pad, sf_k_pad] uint8 E8M0 SFA in dense MMA layout
       - offs_pad: [E] int32 cumulative padded offsets (no leading 0)
-
-    Implementation:
-      - GEMM1+2 (W13): produces BF16 H13 = [gate, up] interleaved
-      - Fused SwiGLU + quantize/pack: produces packed activations + packed-by-offs MMA SFA
-      - GEMM3 (W2): consumes packed activations + MMA SFA and produces BF16 output
+      - W_cache may carry different blockscaled profiles for stage 1 and stage 2
     """
     M_pad = int(Xe_q_pad.shape[0])
     E = int(W_cache.E)
     H = int(W_cache.H)
     Dff = int(W_cache.Dff)
-    profile = W_cache.profile
+    w13_profile = W_cache.w13_profile
+    w2_profile = W_cache.w2_profile
 
     if M_pad == 0:
         return torch.zeros(0, H, device=Xe_q_pad.device, dtype=torch.bfloat16)
 
-    # Production (moonlight): Xe_sf_pad is packed by offs as a 2D swizzled buffer
-    # [M_pad, sf_k_pad], where each expert chunk is laid out back-to-back.
     if not (Xe_sf_pad.is_cuda and Xe_sf_pad.dtype == torch.uint8 and Xe_sf_pad.ndim in (2, 3)):
         raise ValueError(
-            "Xe_sf_pad must be a uint8 CUDA tensor with shape [M_pad, sf_k_pad] (packed by offs, MMA layout). "
+            "Xe_sf_pad must be a uint8 CUDA tensor with shape [M_pad, sf_k_pad] (MMA layout). "
             f"Got device={Xe_sf_pad.device} dtype={Xe_sf_pad.dtype} shape={tuple(Xe_sf_pad.shape)}."
         )
     if Xe_sf_pad.ndim == 3:
@@ -2690,100 +2788,88 @@ def expert_blockscaled(
         raise ValueError(f"Xe_sf_pad.shape[0] must equal M_pad={M_pad}. Got {int(Xe_sf_pad.shape[0])}.")
 
     device_index = Xe_q_pad.device.index if Xe_q_pad.device.index is not None else torch.cuda.current_device()
-    # Input SFA is for K=H.
     sf_k_in = H // 32
     sf_k_in_pad = ((sf_k_in + 3) // 4) * 4
     if int(Xe_sf_pad.shape[1]) != int(sf_k_in_pad):
         raise ValueError(f"Xe_sf_pad.shape[1] must equal sf_k_in_pad={sf_k_in_pad}. Got {int(Xe_sf_pad.shape[1])}.")
 
-    # Post-activation SFA is for K=Dff.
     sf_k_out = Dff // 32
     if (sf_k_out & 3) != 0:
         raise ValueError(f"Dff must be a multiple of 128 (sf_k_out%4==0). Got Dff={Dff}.")
 
-    # Scratch is cached per (device, profile, E, H, Dff) and must not accumulate
-    # multiple large buffers across routing/layers (HBM stability contract).
-    #
-    # When capacity_rows is provided, size scratch by the configured no-drop
-    # capacity (routing-independent) to avoid per-step allocator growth when
-    # M_pad fluctuates.
     align_m = 128
     M_cap_rows = int(M_pad)
     if capacity_rows is not None:
         cap = int(capacity_rows)
         if cap < 0:
             raise ValueError(f"capacity_rows must be >=0, got {cap}.")
-        # RDEP pads each expert to 128 rows; total padded M is bounded by
-        # capacity + E*(align_m-1). Add one extra (align_m-1) for final rounding.
         M_cap_rows = ((cap + E * (align_m - 1) + (align_m - 1)) // align_m) * align_m
 
     M_cap_needed = ((int(M_cap_rows) + (align_m - 1)) // align_m) * align_m
-    scratch_key = (int(device_index), str(profile), int(E), int(H), int(Dff))
+    scratch_key = (int(device_index), str(w13_profile), int(E), int(H), int(Dff))
     scratch = _EXPERT_SCRATCH.get(scratch_key)
     if scratch is None or int(scratch.M_cap) < int(M_cap_needed):
-        # Reuse-only when capacity_rows is set (allocator stability contract).
         if scratch is not None and capacity_rows is not None:
             raise RuntimeError(
                 f"blockscaled expert scratch too small for configured capacity: "
                 f"have M_cap={int(scratch.M_cap)} need>={int(M_cap_needed)} "
                 f"(capacity_rows={int(capacity_rows)}, E={E}, align_m={align_m})."
             )
-
-        # Otherwise, grow once to the needed upper bound (and replace in-cache),
-        # making sure we drop the old buffer first to avoid transient double
-        # allocation spikes.
         if scratch is not None:
             del _EXPERT_SCRATCH[scratch_key]
             scratch = None
 
-        if profile == "fp8":
+        if w13_profile == "fp8":
             A_act = torch.empty((M_cap_needed, Dff // 2), device=Xe_q_pad.device, dtype=torch.uint16)
-        elif profile == "nvfp4":
+        elif w13_profile == "nvfp4":
             A_act = torch.empty((M_cap_needed, Dff // 2), device=Xe_q_pad.device, dtype=torch.uint8)
         else:
-            raise ValueError(f"Unsupported profile: {profile}")
+            raise ValueError(f"Unsupported profile: {w13_profile}")
         A_sf = torch.empty((M_cap_needed, sf_k_out), device=Xe_q_pad.device, dtype=torch.uint8)
         scratch = _ExpertScratch(M_cap=M_cap_needed, A_act=A_act, A_sf=A_sf)
         _EXPERT_SCRATCH[scratch_key] = scratch
 
-    # offs: [E+1] with leading 0.
-    #
-    # NOTE: Avoid CUDA scalar/slice assignment here: it is surprisingly expensive
-    # (can introduce ms-scale launch-side overhead). A tiny cat is faster and
-    # keeps the GPU fed.
     offs_pad_i32 = offs_pad if offs_pad.dtype == torch.int32 else offs_pad.to(torch.int32)
     offs = torch.cat((offs_pad_i32.new_zeros((1,)), offs_pad_i32), dim=0)
 
-    # Convert packed activations to CUTLASS operand format
-    if profile == "fp8":
+    if w13_profile == "fp8":
         A_q = Xe_q_pad.view(torch.uint8).view(M_pad, H, 1).view(torch.float8_e4m3fn)
-    elif profile == "nvfp4":
+    elif w13_profile == "nvfp4":
         A_q = Xe_q_pad.view(torch.uint8).view(M_pad, H // 2, 1)
     else:
-        raise ValueError(f"Unsupported profile: {profile}")
+        raise ValueError(f"Unsupported profile: {w13_profile}")
 
-    # GEMM 1+2 (W13) with fused SwiGLU + quantization (no BF16 H13 materialization).
     dummy_c = torch.empty((1, 1, 1), device=Xe_q_pad.device, dtype=torch.bfloat16)
     run_grouped_blockscaled_strided(
         A_q, Xe_sf_pad, W_cache.W13_q, W_cache.W13_sf_mma, dummy_c, offs,
-        profile=profile, N=2 * Dff, K=H,
+        profile=w13_profile, N=2 * Dff, K=H,
         fuse_swiglu_quant=True,
         out_act=scratch.A_act[:M_pad],
         out_sf_mma=scratch.A_sf[:M_pad],
     )
 
-    if profile == "fp8":
-        A_q_3 = scratch.A_act[:M_pad].view(torch.uint8).view(M_pad, Dff, 1).view(torch.float8_e4m3fn)
-    elif profile == "nvfp4":
-        A_q_3 = scratch.A_act[:M_pad].view(torch.uint8).view(M_pad, Dff // 2, 1)
-    else:
-        raise ValueError(f"Unsupported profile: {profile}")
+    A_q_3_raw = scratch.A_act[:M_pad]
+    A_sf_3_raw = scratch.A_sf[:M_pad].unsqueeze(-1)
+    A_q_3_raw, A_sf_3_raw = _repack_blockscaled_rows(
+        A_q_3_raw,
+        A_sf_3_raw,
+        src_profile=w13_profile,
+        dst_profile=w2_profile,
+        k_dim=Dff,
+    )
+    A_sf_3 = A_sf_3_raw.squeeze(-1)
 
-    # GEMM 3: Y = A @ W2.T
+    if w2_profile == "fp8":
+        A_q_3 = A_q_3_raw.view(torch.uint8).view(M_pad, Dff, 1).view(torch.float8_e4m3fn)
+    elif w2_profile == "nvfp4":
+        A_q_3 = A_q_3_raw.view(torch.uint8).view(M_pad, Dff // 2, 1)
+    else:
+        raise ValueError(f"Unsupported profile: {w2_profile}")
+
     Y_pad = torch.empty((M_pad, H, 1), device=Xe_q_pad.device, dtype=torch.bfloat16)
     run_grouped_blockscaled_strided(
-        A_q_3, scratch.A_sf[:M_pad], W_cache.W2_q, W_cache.W2_sf_mma, Y_pad, offs,
-        profile=profile, N=H, K=Dff,
+        A_q_3, A_sf_3, W_cache.W2_q, W_cache.W2_sf_mma, Y_pad, offs,
+        profile=w2_profile, N=H, K=Dff,
     )
 
     return Y_pad.squeeze(-1)

@@ -63,7 +63,6 @@ nmoe/research/physics/experiment.py
 nmoe/research/physics/poy_experiment.py
 nmoe/research/physics/poy_rigorous.py
 nmoe/research/physics/freeze_experiment.py
-nmoe/research/physics/arch_ablations.py
 nmoe/research/physics/scale_sweep.py
 nmoe/research/physics/sweep.py
 nmoe/research/physics/probe_run.py
@@ -71,6 +70,9 @@ nmoe/research/physics/probe/atlas.py
 nmoe/research/physics/probe/gain.py
 nmoe/research/physics/probe/overlap.py
 nmoe/research/physics/probe/trajectory.py
+
+# Claim ledger (internal audit surface, not v1 public)
+repro/claim_ledger/
 
 # Research notebooks (internal)
 notebooks/

@@ -1,0 +1,243 @@
+{
+  "post": "0008",
+  "title": "Do MoE Experts Need Different Learning Rates?",
+  "evidence_tier": "external_repro",
+  "status": "complete_for_scope",
+  "generated_at_utc": "2026-03-13T17:21:26Z",
+  "summary": "Theory-plus-validation receipts for 0008: the bf16 Moonlet two-seed sweep and bf16 direct update-proof runs that support the main result, plus a shorter nvfp4/ExpertAdamW diagnostic lane and grad-health canary that point in the same direction without closing the full nvfp4 tuning question. The earned result is the bf16 lane: sparse routing attenuates raw expert gradients, but the adaptive optimizer still prefers lr_expert = lr_dense and makes 15x an overcorrection.",
+  "runs": {
+    "m0p5_s42": "run_1773264430_9484",
+    "m1_s42": "run_1773261740_2498",
+    "m2_s42": "run_1773264178_8727",
+    "m4_s42": "run_1773262179_4211",
+    "m15_s42": "run_1773261948_3435",
+    "m0p5_s43": "run_1773264701_10969",
+    "m1_s43": "run_1773262650_5765",
+    "m2_s43": "run_1773264590_10264",
+    "m4_s43": "run_1773263181_7207",
+    "m15_s43": "run_1773262893_6407",
+    "m1_b95_s42": "run_1773262430_4988",
+    "m1_b95_s43": "run_1773263921_8009",
+    "updateproof_m1_s42": "run_1773268882_2350",
+    "updateproof_m15_s42": "run_1773269155_3077",
+    "nvfp4_updateproof_m1_s42": "run_1773271908_2832",
+    "nvfp4_updateproof_m15_s42": "run_1773272179_2822",
+    "nvfp4_gradhealth_m1_s42": "run_1773272450_4339",
+    "nvfp4_gradhealth_m15_s42": "run_1773272599_4329"
+  },
+  "artifacts": [
+    {
+      "kind": "config_contract",
+      "path": "configs/moonlet.toml"
+    },
+    {
+      "kind": "repro_script",
+      "path": "scripts/repro/run_0008_bf16_sweep.sh"
+    },
+    {
+      "kind": "repro_script",
+      "path": "scripts/repro/run_0008_bf16_updateproof.sh"
+    },
+    {
+      "kind": "repro_script",
+      "path": "scripts/repro/run_0008_nvfp4_updateproof.sh"
+    },
+    {
+      "kind": "repro_script",
+      "path": "scripts/repro/run_0008_nvfp4_gradhealth.sh"
+    },
+    {
+      "kind": "repro_script",
+      "path": "scripts/repro/summarize_0008_bf16_sweep.py"
+    },
+    {
+      "kind": "training_source",
+      "path": "nmoe/train.py"
+    },
+    {
+      "kind": "experiments_db",
+      "path": "blog_artifacts/0008_expert_lr_bf16_20260311/experiments.db"
+    },
+    {
+      "kind": "experiments_db",
+      "path": "blog_artifacts/0008_expert_lr_bf16_updateproof_20260311/experiments.db"
+    },
+    {
+      "kind": "experiments_db",
+      "path": "blog_artifacts/0008_expert_lr_nvfp4_updateproof_b20260311/experiments.db"
+    },
+    {
+      "kind": "experiments_db",
+      "path": "blog_artifacts/0008_expert_lr_nvfp4_gradhealth_c20260311/experiments.db"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_20260311/metrics/run_1773264430_9484/step_00000110.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_20260311/metrics/run_1773261740_2498/step_00000200.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_20260311/metrics/run_1773264178_8727/step_00000200.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_20260311/metrics/run_1773262179_4211/step_00000200.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_20260311/metrics/run_1773261948_3435/step_00000200.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_20260311/metrics/run_1773264701_10969/step_00000200.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_20260311/metrics/run_1773262650_5765/step_00000200.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_20260311/metrics/run_1773264590_10264/step_00000080.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_20260311/metrics/run_1773263181_7207/step_00000200.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_20260311/metrics/run_1773262893_6407/step_00000110.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_20260311/metrics/run_1773262430_4988/step_00000200.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_20260311/metrics/run_1773263921_8009/step_00000200.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_updateproof_20260311/metrics/run_1773268882_2350/step_00000010.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_updateproof_20260311/metrics/run_1773268882_2350/step_00000050.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_updateproof_20260311/metrics/run_1773268882_2350/step_00000100.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_updateproof_20260311/metrics/run_1773268882_2350/step_00000130.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_updateproof_20260311/metrics/run_1773268882_2350/step_00000200.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_updateproof_20260311/metrics/run_1773269155_3077/step_00000010.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_updateproof_20260311/metrics/run_1773269155_3077/step_00000050.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_updateproof_20260311/metrics/run_1773269155_3077/step_00000100.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_bf16_updateproof_20260311/metrics/run_1773269155_3077/step_00000130.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_nvfp4_updateproof_b20260311/metrics/run_1773271908_2832/step_00000010.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_nvfp4_updateproof_b20260311/metrics/run_1773271908_2832/step_00000050.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_nvfp4_updateproof_b20260311/metrics/run_1773271908_2832/step_00000100.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_nvfp4_updateproof_b20260311/metrics/run_1773271908_2832/step_00000130.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_nvfp4_updateproof_b20260311/metrics/run_1773271908_2832/step_00000200.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_nvfp4_updateproof_b20260311/metrics/run_1773272179_2822/step_00000010.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_nvfp4_updateproof_b20260311/metrics/run_1773272179_2822/step_00000050.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_nvfp4_updateproof_b20260311/metrics/run_1773272179_2822/step_00000100.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_nvfp4_updateproof_b20260311/metrics/run_1773272179_2822/step_00000130.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_nvfp4_updateproof_b20260311/metrics/run_1773272179_2822/step_00000200.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_nvfp4_gradhealth_c20260311/metrics/run_1773272450_4339/step_00000010.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_nvfp4_gradhealth_c20260311/metrics/run_1773272450_4339/step_00000050.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_nvfp4_gradhealth_c20260311/metrics/run_1773272599_4329/step_00000010.parquet"
+    },
+    {
+      "kind": "step_metrics_parquet",
+      "path": "blog_artifacts/0008_expert_lr_nvfp4_gradhealth_c20260311/metrics/run_1773272599_4329/step_00000050.parquet"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/0008_expert_lr_sweep.svg",
+      "logical_path": "/figures/0008_expert_lr_sweep.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/0008_expert_lr_mechanism.svg",
+      "logical_path": "/figures/0008_expert_lr_mechanism.svg"
+    }
+  ],
+  "commands": [
+    "bash scripts/repro/run_0008_bf16_sweep.sh blog_artifacts/0008_expert_lr_bf16_20260311",
+    "python3 scripts/repro/summarize_0008_bf16_sweep.py --kind main --study-root blog_artifacts/0008_expert_lr_bf16_20260311",
+    "bash scripts/repro/run_0008_bf16_updateproof.sh blog_artifacts/0008_expert_lr_bf16_updateproof_20260311",
+    "python3 scripts/repro/summarize_0008_bf16_sweep.py --kind updateproof --study-root blog_artifacts/0008_expert_lr_bf16_updateproof_20260311 --steps 10,50,100,130,200",
+    "bash scripts/repro/run_0008_nvfp4_updateproof.sh blog_artifacts/0008_expert_lr_nvfp4_updateproof_b20260311",
+    "python3 scripts/repro/summarize_0008_bf16_sweep.py --kind nvfp4_updateproof --study-root blog_artifacts/0008_expert_lr_nvfp4_updateproof_b20260311 --steps 10,50,100,130,200",
+    "bash scripts/repro/run_0008_nvfp4_gradhealth.sh blog_artifacts/0008_expert_lr_nvfp4_gradhealth_c20260311",
+    "python3 scripts/repro/summarize_0008_bf16_sweep.py --kind nvfp4_gradhealth --study-root blog_artifacts/0008_expert_lr_nvfp4_gradhealth_c20260311 --steps 10,50"
+  ],
+  "notes": [
+    "Primary scope is Moonlet bf16 with expert_opt = auto -> AdamW. The nvfp4/ExpertAdamW surface in this receipt is diagnostic and directional, not a coequal settled proof lane. This receipt does not claim the result transfers unchanged to ExpertMuon.",
+    "In the current implementation, route_scale is applied to router logits before sigmoid/topk; the post-normalization scaling knob is routed_scaling_factor, which remains 1.0 in Moonlet.",
+    "Across the bf16 two-seed sweep, lr_expert = lr_dense is the best tested multiplier in the 200-step window; 0.5x is not better, and larger multipliers worsen loss or collapse routing earlier.",
+    "The beta2_expert ablation flips across the two seeds, so this receipt set does not promote a solved beta2 rule.",
+    "The bf16 direct update-proof runs log exact per-group grad norms and post-step optimizer-update ratios: at 1x the expert grad-to-param ratio is about 1e-3 of dense, but the optimizer-update ratio stays in the same order (0.36x to 0.62x); at 15x it rises to 5.63x to 12.12x before routing collapses at step 130.",
+    "The nvfp4/ExpertAdamW direct proof is single-seed and only compares 1x to 15x. Within that narrower scope it shows weaker cancellation than bf16 but the same sign: at 1x the expert-to-dense optimizer-update ratio is about 0.22x to 0.53x, while at 15x it rises to 2.38x to 6.10x; this is enough to show directional over-update, not to close the full nvfp4 optimum.",
+    "The short nvfp4 grad-health canary uses the new per-expert zero-fraction and abs-mean tags from nmoe/train.py. At step 50, 1x shows about 0.71% exact-zero expert gradients on W1/W2/W3, while 15x shows about 13.35%; that canary is diagnostic only and does not replace the main proof runs."
+  ]
+}

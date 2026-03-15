@@ -40,6 +40,14 @@ spec:
           env:
             - name: PYTORCH_CUDA_ALLOC_CONF
               value: "expandable_segments:True"
+            - name: PYTHONPATH
+              value: "/workspace/nmoe:/workspace/nmoe/nmoe/csrc:/workspace/nmoe/third_party/flash_attn:/workspace/nmoe/third_party/quack:/workspace/nmoe/triton/python"
+            - name: NMOE_FLASH_ATTN_PATH
+              value: "/workspace/nmoe/third_party/flash_attn"
+            - name: NMOE_QUACK_PATH
+              value: "/workspace/nmoe/third_party/quack"
+            - name: NMOE_TRITON_PYTHON_PATH
+              value: "/workspace/nmoe/triton/python"
           securityContext:
             privileged: true
             capabilities:

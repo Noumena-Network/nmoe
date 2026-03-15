@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="380" viewBox="0 0 640 380" role="img" aria-labelledby="title desc">
+  <title id="title">Late-window NVFP4 residual gap to BF16</title>
+  <desc id="desc">Line chart showing the residual loss gap between corrected NVFP4 embed-only plus AdamW and BF16 from steps 7808 through 9536, staying near plus 0.046 to plus 0.047.</desc>
+<style>
+.t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}
+.m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}
+.muted{fill:#7c7c7c}
+.axis{stroke:#6b6b6b;stroke-width:1}
+.grid{stroke:#b8b1aa;stroke-width:1;opacity:.35}
+</style>
+
+  <text x="50" y="30" font-size="18" class="t">Late-window residual gap</text>
+  <text x="50" y="52" font-size="13" class="t muted">Corrected NVFP4 (embed-only + AdamW) minus BF16. Smaller is better; stable is the point.</text>
+
+  <line x1="90" y1="300" x2="600" y2="300" class="axis"/>
+  <line x1="90" y1="80" x2="90" y2="300" class="axis"/>
+  <line x1="90" y1="260" x2="600" y2="260" class="grid"/>
+  <line x1="90" y1="180" x2="600" y2="180" class="grid"/>
+  <line x1="90" y1="140" x2="600" y2="140" class="grid"/>
+
+  <text x="78" y="304" font-size="12" text-anchor="end" class="m muted">0.045</text>
+  <text x="78" y="264" font-size="12" text-anchor="end" class="m muted">0.046</text>
+  <text x="78" y="184" font-size="12" text-anchor="end" class="m muted">0.048</text>
+  <text x="78" y="144" font-size="12" text-anchor="end" class="m muted">0.049</text>
+
+  <text x="130" y="330" font-size="12" text-anchor="middle" class="m muted">7808</text>
+  <text x="250" y="330" font-size="12" text-anchor="middle" class="m muted">8192</text>
+  <text x="370" y="330" font-size="12" text-anchor="middle" class="m muted">8576</text>
+  <text x="490" y="330" font-size="12" text-anchor="middle" class="m muted">8960</text>
+  <text x="600" y="330" font-size="12" text-anchor="middle" class="m muted">9536</text>
+
+  <polyline fill="none" stroke="#FF9101" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" points="130,293 250,228 370,237 490,120 600,212"/>
+  <circle cx="130" cy="293" r="5" fill="#FF9101" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="250" cy="228" r="5" fill="#FF9101" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="370" cy="237" r="5" fill="#FF9101" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="490" cy="120" r="5" fill="#FF9101" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="600" cy="212" r="5" fill="#FF9101" stroke="#ffffff" stroke-width="2"/>
+
+  <text x="130" y="280" text-anchor="middle" font-size="12" class="m muted">+0.0451</text>
+  <text x="250" y="215" text-anchor="middle" font-size="12" class="m muted">+0.0467</text>
+  <text x="370" y="224" text-anchor="middle" font-size="12" class="m muted">+0.0465</text>
+  <text x="490" y="107" text-anchor="middle" font-size="12" class="m muted">+0.0485</text>
+  <text x="600" y="199" text-anchor="middle" font-size="12" class="m muted">+0.0471</text>
+
+  <text x="345" y="362" font-size="13" text-anchor="middle" class="t">Step</text>
+  <text x="18" y="190" font-size="13" text-anchor="middle" class="t" transform="rotate(-90 18 190)">Gap (nats)</text>
+</svg>

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" role="img">
+<style>.t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}.m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}.muted{fill:#7c7c7c}.axis{stroke:#6b6b6b;stroke-width:1}.grid{stroke:#b8b1aa;stroke-width:1;opacity:.35}</style>
+<text x="320" y="24" font-size="18" text-anchor="middle" class="t">Tokens per routed expert shrinks with sparsity</text>
+<text x="320" y="46" font-size="13" text-anchor="middle" class="t muted">Computed from steps × tokens/step × (K/E) for the runs in 0003 and 0006</text>
+<line x1="80" y1="300.0" x2="622" y2="300.0" class="grid" />
+<text x="70" y="304.0" font-size="12" text-anchor="end" class="t muted">10M</text>
+<line x1="80" y1="182.0" x2="622" y2="182.0" class="grid" />
+<text x="70" y="186.0" font-size="12" text-anchor="end" class="t muted">100M</text>
+<line x1="80" y1="64.0" x2="622" y2="64.0" class="grid" />
+<text x="70" y="68.0" font-size="12" text-anchor="end" class="t muted">1000M</text>
+<line x1="80" y1="300" x2="622" y2="300" class="axis" />
+<line x1="80" y1="300" x2="80" y2="64" class="axis" />
+<rect x="125.5" y="102.8" width="120" height="197.2" fill="#6b6b6b" opacity="0.9" />
+<text x="185.5" y="320" font-size="12" text-anchor="middle" class="t">MoE-64</text>
+<text x="185.5" y="336" font-size="11" text-anchor="middle" class="t muted">E=64, K=6</text>
+<text x="185.5" y="94.8" font-size="12" text-anchor="middle" class="m muted">468.7M</text>
+<rect x="291.0" y="159.8" width="120" height="140.2" fill="#2E7D32" opacity="0.9" />
+<text x="351.0" y="320" font-size="12" text-anchor="middle" class="t">Ultra-256</text>
+<text x="351.0" y="336" font-size="11" text-anchor="middle" class="t muted">E=256, K=7</text>
+<text x="351.0" y="151.8" font-size="12" text-anchor="middle" class="m muted">154.1M</text>
+<rect x="456.5" y="296.3" width="120" height="3.7" fill="#FF9101" opacity="0.9" />
+<text x="516.5" y="320" font-size="12" text-anchor="middle" class="t">Super-4096</text>
+<text x="516.5" y="336" font-size="11" text-anchor="middle" class="t muted">E=4096, K=7</text>
+<text x="516.5" y="288.3" font-size="12" text-anchor="middle" class="m muted">10.8M</text>
+<text x="351.0" y="350" font-size="13" text-anchor="middle" class="t">Model</text>
+<text x="18" y="182.0" font-size="13" text-anchor="middle" class="t" transform="rotate(-90 18 182.0)">Tokens per routed expert (log, millions)</text>
+</svg>

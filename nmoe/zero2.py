@@ -135,7 +135,8 @@ def step_dense_adamw(
   pg: dist.ProcessGroup | None = None,
   betas: tuple[float, float] = (0.9, 0.95),
   eps: float = 1e-8,
-) -> None:
+  collect_stats: bool = False,
+) -> dict[str, dict[str, float]] | None:
   """ZeRO-2 shard step for dense param groups using AdamW.
 
   For each group:
@@ -160,11 +161,16 @@ def step_dense_adamw(
   world = dist.get_world_size(pg) if (dist.is_available() and dist.is_initialized()) else 1
 
   rank = dist.get_rank(pg) if (dist.is_available() and dist.is_initialized()) else 0
+  stats_acc: dict[str, torch.Tensor] = {}
 
   for group_idx, group in enumerate(param_groups):
     params = list(group['params'])
     if not params:
       continue
+
+    stat_group = 'router' if group.get('name') == 'router' else 'dense'
+    if collect_stats and stat_group not in stats_acc:
+      stats_acc[stat_group] = torch.zeros(5, device=params[0].device, dtype=torch.float64)
 
     # Group by dtype
     by_dtype = {}
@@ -273,6 +279,24 @@ def step_dense_adamw(
           v.mul_(beta2).addcmul_(g, g, value=1 - beta2)
 
           denom = v.sqrt().mul_(inv_bc2_sqrt).add_(eps)
+          if collect_stats:
+            p_before = p.detach().float()
+            denom_f = denom.detach().float()
+            opt_update = m.detach().float().div(denom_f).mul(step_size)
+            pre_param_sq = (p_before * p_before).sum(dtype=torch.float64)
+            opt_sq = (opt_update * opt_update).sum(dtype=torch.float64)
+            acc = stats_acc[stat_group]
+            acc[1] += opt_sq
+            acc[3] += pre_param_sq
+            acc[4] += float(chunk_len)
+            if wd > 0.0:
+              wd_scale = float(lr * wd)
+              wd_sq = pre_param_sq * (wd_scale * wd_scale)
+              cross = (opt_update * p_before).sum(dtype=torch.float64) * (2.0 * wd_scale)
+              acc[0] += opt_sq + wd_sq + cross
+              acc[2] += wd_sq
+            else:
+              acc[0] += opt_sq
           if wd > 0.0:
             p.mul_(1.0 - lr * wd)
           p.addcdiv_(m, denom, value=-step_size)
@@ -284,3 +308,28 @@ def step_dense_adamw(
       elif total < padded_total:
         # Keep padding clean for determinism.
         flat_param[total:padded_total].zero_()
+
+  if not collect_stats:
+    return None
+
+  if dist.is_available() and dist.is_initialized():
+    for acc in stats_acc.values():
+      dist.all_reduce(acc, op=dist.ReduceOp.SUM, group=pg)
+
+  out: dict[str, dict[str, float]] = {}
+  for group, acc in stats_acc.items():
+    update_sq, opt_sq, wd_sq, pre_param_sq, count = [float(x.item()) for x in acc]
+    pre_param_norm = math.sqrt(pre_param_sq) if pre_param_sq > 0.0 else 0.0
+    update_norm = math.sqrt(update_sq) if update_sq > 0.0 else 0.0
+    optimizer_update_norm = math.sqrt(opt_sq) if opt_sq > 0.0 else 0.0
+    weight_decay_update_norm = math.sqrt(wd_sq) if wd_sq > 0.0 else 0.0
+    out[group] = {
+      'pre_param_norm': pre_param_norm,
+      'update_norm': update_norm,
+      'update_to_pre_param': (update_norm / pre_param_norm) if pre_param_norm > 0.0 else None,
+      'optimizer_update_norm': optimizer_update_norm,
+      'optimizer_update_to_pre_param': (optimizer_update_norm / pre_param_norm) if pre_param_norm > 0.0 else None,
+      'weight_decay_update_norm': weight_decay_update_norm,
+      'param_count': int(round(count)),
+    }
+  return out

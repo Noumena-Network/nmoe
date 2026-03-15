@@ -2094,7 +2094,7 @@ __global__ void k_dispatch_blockscaled(
             if (is_remote) {
                 int4* meta_dst = reinterpret_cast<int4*>(&meta_buf[slot_r]);
                 int4 meta_val = *reinterpret_cast<const int4*>(&m);
-                st_na_v4_s32(meta_dst, meta_val);
+                st_relaxed_sys_v4_s32(meta_dst, meta_val);
             } else {
                 meta_buf[slot_r] = m;
             }
@@ -2132,7 +2132,7 @@ __global__ void k_dispatch_blockscaled(
             // Write scale factor (lane 0 only)
             if (lane == 0) {
                 if (is_remote) {
-                    st_na_relaxed_gpu_b8(dst_sfa + blk, scale_byte);
+                    st_relaxed_sys_b8(dst_sfa + blk, scale_byte);
                 } else {
                     dst_sfa[blk] = scale_byte;
                 }
@@ -2154,7 +2154,7 @@ __global__ void k_dispatch_blockscaled(
                     uint16_t packed = (uint16_t)q8 | ((uint16_t)q8_neighbor << 8);
                     int pack_idx = blk * (SF_VEC / 2) + (lane / 2);
                     if (is_remote) {
-                        st_na_relaxed_gpu_b16(dst_pack + pack_idx, packed);
+                        st_relaxed_sys_b16(dst_pack + pack_idx, packed);
                     } else {
                         dst_pack[pack_idx] = packed;
                     }
@@ -2173,7 +2173,7 @@ __global__ void k_dispatch_blockscaled(
                     uint16_t packed = to_fp4x4(qf0, qf1, qf2, qf3);
                     int pack_idx = blk * (SF_VEC / 4) + (lane / 4);
                     if (is_remote) {
-                        st_na_relaxed_gpu_b16(dst_pack + pack_idx, packed);
+                        st_relaxed_sys_b16(dst_pack + pack_idx, packed);
                     } else {
                         dst_pack[pack_idx] = packed;
                     }
@@ -3452,7 +3452,7 @@ __global__ void k_return_scatter_blockscaled_bf16(
                 Meta mr{m.row_id, 0, m.gate};
                 int4* meta_dst = reinterpret_cast<int4*>(&meta_buf[slot_r]);
                 int4 meta_val = *reinterpret_cast<const int4*>(&mr);
-                st_na_v4_s32(meta_dst, meta_val);
+                st_relaxed_sys_v4_s32(meta_dst, meta_val);
             }
 
             const __nv_bfloat16* y_row = Ye + (int64_t)sorted_i * H;
@@ -3463,10 +3463,10 @@ __global__ void k_return_scatter_blockscaled_bf16(
                 if (h + 8 <= H) {
                     int4* d = reinterpret_cast<int4*>(dst + h);
                     int4 v = *reinterpret_cast<const int4*>(y_row + h);
-                    st_na_v4_s32(d, v);
+                    st_relaxed_sys_v4_s32(d, v);
                 } else {
                     for (int hh = h; hh < H && hh < h + 8; hh++) {
-                        st_na_relaxed_gpu_b16(dst + hh, reinterpret_cast<const uint16_t*>(y_row)[hh]);
+                        st_relaxed_sys_b16(dst + hh, reinterpret_cast<const uint16_t*>(y_row)[hh]);
                     }
                 }
             }

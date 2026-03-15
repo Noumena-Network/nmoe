@@ -1,0 +1,468 @@
+{
+  "post": "0010",
+  "title": "Reproducing Canon, mHC, and Engram",
+  "evidence_tier": "internal_provenance",
+  "status": "complete_for_scope",
+  "generated_at_utc": "2026-03-07T20:56:48Z",
+  "summary": "Physics harness receipts for Canon/mHC/Engram claims and figure provenance. This package captures the multiseed structured-suite run indexes, the seed-0 Engram slice and layer diagnostics, the 4k mixed-ratio attention sweep, and the rendered figure mapping.",
+  "artifacts": [
+    {
+      "kind": "physics_run_index",
+      "path": "physics/physicslm4_reval_s0/baseline/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/physicslm4_reval_s0/baseline/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/physicslm4_reval_s0/baseline/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/physicslm4_reval_s0/engram/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/physicslm4_reval_s0/engram/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/physicslm4_reval_s0/engram/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/physicslm4_reval_s0/mhc/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/physicslm4_reval_s0/mhc/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/physicslm4_reval_s0/mhc/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/physicslm4_reval_s0/canon_abcd/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/physicslm4_reval_s0/canon_abcd/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/physicslm4_reval_s0/canon_abcd/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/physicslm4_reval_s0/mhc_canon/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/physicslm4_reval_s0/mhc_canon/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/physicslm4_reval_s0/mhc_canon/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/physicslm4_reval_s0/full/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/physicslm4_reval_s0/full/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/physicslm4_reval_s0/full/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/validation_3seed/baseline_s1/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/validation_3seed/baseline_s1/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/validation_3seed/baseline_s1/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/validation_3seed/baseline_s2/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/validation_3seed/baseline_s2/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/validation_3seed/baseline_s2/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/validation_3seed/engram_s1/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/validation_3seed/engram_s1/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/validation_3seed/engram_s1/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/validation_3seed/engram_s2/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/validation_3seed/engram_s2/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/validation_3seed/engram_s2/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/validation_3seed/mhc_s1/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/validation_3seed/mhc_s1/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/validation_3seed/mhc_s1/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/validation_3seed/mhc_s2/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/validation_3seed/mhc_s2/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/validation_3seed/mhc_s2/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/validation_3seed/canon_s1/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/validation_3seed/canon_s1/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/validation_3seed/canon_s1/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/validation_3seed/canon_s2/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/validation_3seed/canon_s2/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/validation_3seed/canon_s2/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/validation_3seed/mhc_canon_s1/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/validation_3seed/mhc_canon_s1/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/validation_3seed/mhc_canon_s1/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/validation_3seed/mhc_canon_s2/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/validation_3seed/mhc_canon_s2/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/validation_3seed/mhc_canon_s2/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/validation_3seed/mhc_canon_engram_s1/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/validation_3seed/mhc_canon_engram_s1/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/validation_3seed/mhc_canon_engram_s1/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/validation_3seed/mhc_canon_engram_s2/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/validation_3seed/mhc_canon_engram_s2/analysis/summary.json"
+    },
+    {
+      "kind": "physics_lano_cfg_dp_valid",
+      "path": "physics/validation_3seed/mhc_canon_engram_s2/analysis/lano_cfg_dp_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/engram_repro_ngram_d24_s0_matrix/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/engram_repro_ngram_d24_s0_matrix/analysis/summary.json"
+    },
+    {
+      "kind": "physics_slices_valid",
+      "path": "physics/engram_repro_ngram_d24_s0_matrix/analysis/slices_valid.json"
+    },
+    {
+      "kind": "physics_logitlens_valid",
+      "path": "physics/engram_repro_ngram_d24_s0_matrix/analysis/logitlens_valid.json"
+    },
+    {
+      "kind": "physics_cka_valid",
+      "path": "physics/engram_repro_ngram_d24_s0_matrix/analysis/cka_valid.json"
+    },
+    {
+      "kind": "physics_cka_depth_shift",
+      "path": "physics/engram_repro_ngram_d24_s0_matrix/analysis/cka_depth_shift.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/engram_repro_ngram_d24_s0_matrix_layerce/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/engram_repro_ngram_d24_s0_matrix_layerce/analysis/summary.json"
+    },
+    {
+      "kind": "physics_slices_valid",
+      "path": "physics/engram_repro_ngram_d24_s0_matrix_layerce/analysis/slices_valid.json"
+    },
+    {
+      "kind": "physics_layer_ce_valid",
+      "path": "physics/engram_repro_ngram_d24_s0_matrix_layerce/analysis/layer_ce_valid.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/mixed_ratio_3seed/G1L0_s42/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/mixed_ratio_3seed/G1L0_s42/analysis/summary.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/mixed_ratio_3seed/G1L0_s43/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/mixed_ratio_3seed/G1L0_s43/analysis/summary.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/mixed_ratio_3seed/G1L0_s44/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/mixed_ratio_3seed/G1L0_s44/analysis/summary.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/mixed_ratio_3seed/G1L1_s42/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/mixed_ratio_3seed/G1L1_s42/analysis/summary.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/mixed_ratio_3seed/G1L1_s43/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/mixed_ratio_3seed/G1L1_s43/analysis/summary.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/mixed_ratio_3seed/G1L1_s44/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/mixed_ratio_3seed/G1L1_s44/analysis/summary.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/mixed_ratio_3seed/G1L9_s42/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/mixed_ratio_3seed/G1L9_s42/analysis/summary.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/mixed_ratio_3seed/G1L9_s43/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/mixed_ratio_3seed/G1L9_s43/analysis/summary.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/mixed_ratio_3seed/G1L9_s44/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/mixed_ratio_3seed/G1L9_s44/analysis/summary.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/mixed_ratio_3seed/G0L1_s42/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/mixed_ratio_3seed/G0L1_s42/analysis/summary.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/mixed_ratio_3seed/G0L1_s43/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/mixed_ratio_3seed/G0L1_s43/analysis/summary.json"
+    },
+    {
+      "kind": "physics_run_index",
+      "path": "physics/mixed_ratio_3seed/G0L1_s44/runs.json"
+    },
+    {
+      "kind": "physics_summary",
+      "path": "physics/mixed_ratio_3seed/G0L1_s44/analysis/summary.json"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/physicslm4_dpkl.svg",
+      "logical_path": "/figures/physicslm4_dpkl.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/physics_attn_ratio_4k.svg",
+      "logical_path": "/figures/physics_attn_ratio_4k.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/engram_repro_d24/logitlens_ngram.svg",
+      "logical_path": "/figures/engram_repro_d24/logitlens_ngram.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/engram_repro_d24/logitlens_ngram_delta.svg",
+      "logical_path": "/figures/engram_repro_d24/logitlens_ngram_delta.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/engram_repro_d24/logitlens_ngram_polysemy.svg",
+      "logical_path": "/figures/engram_repro_d24/logitlens_ngram_polysemy.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/engram_repro_d24/logitlens_ngram_polysemy_delta.svg",
+      "logical_path": "/figures/engram_repro_d24/logitlens_ngram_polysemy_delta.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/engram_repro_d24/logitlens_ngram_scrambled.svg",
+      "logical_path": "/figures/engram_repro_d24/logitlens_ngram_scrambled.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/engram_repro_d24/logitlens_ngram_scrambled_delta.svg",
+      "logical_path": "/figures/engram_repro_d24/logitlens_ngram_scrambled_delta.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/engram_repro_d24/cka_ngram__width_fixed_residual_vanilla_memory_engram_attn_global.svg",
+      "logical_path": "/figures/engram_repro_d24/cka_ngram__width_fixed_residual_vanilla_memory_engram_attn_global.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/engram_repro_d24/cka_ngram__width_fixed_residual_vanilla_memory_ple_ngrammer_attn_global.svg",
+      "logical_path": "/figures/engram_repro_d24/cka_ngram__width_fixed_residual_vanilla_memory_ple_ngrammer_attn_global.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/engram_repro_d24/cka_ngram_polysemy__width_fixed_residual_vanilla_memory_engram_attn_global.svg",
+      "logical_path": "/figures/engram_repro_d24/cka_ngram_polysemy__width_fixed_residual_vanilla_memory_engram_attn_global.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/engram_repro_d24/cka_ngram_polysemy__width_fixed_residual_vanilla_memory_ple_ngrammer_attn_global.svg",
+      "logical_path": "/figures/engram_repro_d24/cka_ngram_polysemy__width_fixed_residual_vanilla_memory_ple_ngrammer_attn_global.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/engram_repro_d24/cka_ngram_scrambled__width_fixed_residual_vanilla_memory_engram_attn_global.svg",
+      "logical_path": "/figures/engram_repro_d24/cka_ngram_scrambled__width_fixed_residual_vanilla_memory_engram_attn_global.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/engram_repro_d24/cka_ngram_scrambled__width_fixed_residual_vanilla_memory_ple_ngrammer_attn_global.svg",
+      "logical_path": "/figures/engram_repro_d24/cka_ngram_scrambled__width_fixed_residual_vanilla_memory_ple_ngrammer_attn_global.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/engram_repro_d24/mem_gate_heatmap_width_fixed_residual_vanilla_memory_engram_attn_global.svg",
+      "logical_path": "/figures/engram_repro_d24/mem_gate_heatmap_width_fixed_residual_vanilla_memory_engram_attn_global.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/engram_repro_d24/slices_layer_ce_ngram_polysemy_width_fixed_residual_vanilla_memory_none_attn_global.svg",
+      "logical_path": "/figures/engram_repro_d24/slices_layer_ce_ngram_polysemy_width_fixed_residual_vanilla_memory_none_attn_global.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/engram_repro_d24/slices_layer_ce_ngram_polysemy_width_fixed_residual_vanilla_memory_engram_attn_global.svg",
+      "logical_path": "/figures/engram_repro_d24/slices_layer_ce_ngram_polysemy_width_fixed_residual_vanilla_memory_engram_attn_global.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/engram_repro_d24/slices_layer_ce_ngram_polysemy_width_fixed_residual_vanilla_memory_ple_ngrammer_attn_global.svg",
+      "logical_path": "/figures/engram_repro_d24/slices_layer_ce_ngram_polysemy_width_fixed_residual_vanilla_memory_ple_ngrammer_attn_global.svg"
+    }
+  ],
+  "commands": [
+    "for seed in 0 1 2; do for spec in 'width=fixed,residual=vanilla,memory=none,attn=global' 'width=fixed,residual=vanilla,memory=engram,attn=global' 'width=fixed,residual=mhc,memory=none,attn=global' 'width=fixed,residual=vanilla,precond=canon,canon_set=ABCD,memory=none,attn=global' 'width=fixed,residual=mhc,precond=canon,canon_set=ABCD,memory=none,attn=global' 'width=fixed,residual=mhc,precond=canon,canon_set=ABCD,memory=engram,attn=global'; do python -m nmoe.research.physics.arch_ablations --output \"./out/physicslm4_reval_s${seed}\" --steps 2000 --seed \"$seed\" --init-seed 0 --dim 256 --n-layers 6 --seq-len 2048 --mlp-type swiglu --lano-cfg-kl --lano-cfg-kl-n 16 --layer-ce --layer-ce-n 256 --tasks \"depo_v2:0.4:n_words_max=30,max_hops=6,n_qa=4,mini_vocab=8,min_tlen=2,max_tlen=4\" \"lano_cfg:0.3:graph_seed=0,depth=6,num_sym=3,deg_min=2,deg_max=2,len_min=2,len_max=3,max_len=1024,token_base=9400\" \"mano:0.3:depth=6,ops=asm\" --variant \"$spec\"; done; done",
+    "python -m nmoe.research.physics.arch_ablations --output ./out/engram_repro_matrix_s0 --steps 2000 --seed 0 --init-seed 0 --dim 256 --n-layers 24 --seq-len 256 --slice-metrics --slice-metrics-n 512 --logitlens --logitlens-n 256 --cka --cka-n 128 --tasks \"ngram_polysemy:1.0:n_symbols=512,n_steps=128,table_seed=0\" \"ngram_scrambled:1.0:n_symbols=512,n_steps=128,table_seed=0\" \"ngram:1.0:n_symbols=512,n_steps=128,table_seed=0\" --matrix engram_repro",
+    "python -m nmoe.research.physics.viz_logitlens --runs ./out/engram_repro_matrix_s0",
+    "python -m nmoe.research.physics.viz_cka --runs ./out/engram_repro_matrix_s0",
+    "python -m nmoe.research.physics.arch_ablations --output ./out/engram_repro_matrix_layerce_s0 --steps 2000 --seed 0 --init-seed 0 --dim 256 --n-layers 24 --seq-len 256 --slice-metrics --slice-metrics-n 512 --layer-ce --layer-ce-n 256 --tasks \"ngram:1.0:n_symbols=512,n_steps=128,table_seed=0\" \"ngram_polysemy:1.0:n_symbols=512,n_steps=128,table_seed=0\" \"ngram_scrambled:1.0:n_symbols=512,n_steps=128,table_seed=0\" --matrix engram_repro",
+    "python -m nmoe.research.physics.viz_slices --runs ./out/engram_repro_matrix_layerce_s0",
+    "for seed in 42 43 44; do for spec in 'width=fixed,residual=mhc,precond=canon,canon_set=ABCD,memory=engram,attn=global' 'width=fixed,residual=mhc,precond=canon,canon_set=ABCD,memory=engram,attn=mixed:G1L1:64' 'width=fixed,residual=mhc,precond=canon,canon_set=ABCD,memory=engram,attn=mixed:G1L9:64' 'width=fixed,residual=mhc,precond=canon,canon_set=ABCD,memory=engram,attn=local:64'; do python -m nmoe.research.physics.arch_ablations --output \"./out/mixed_ratio_4k_s${seed}\" --steps 2000 --seed \"$seed\" --init-seed 0 --dim 256 --n-layers 6 --seq-len 4096 --slice-metrics --slice-metrics-n 512 --tasks \"ngram_polysemy:0.4:n_symbols=512,n_steps=128,table_seed=0\" \"ngram_scrambled:0.4:n_symbols=512,n_steps=128,table_seed=0\" \"depo:0.8:n_entities=6,max_hops=4\" \"mano:0.2:depth=2,ops=asm\" \"mano:0.2:depth=6,ops=asm\" --variant \"$spec\"; done; done"
+  ],
+  "notes": [
+    "Scope is architecture behavior on the physics harness, not large-scale production claims.",
+    "Structured-suite table: seed 0 comes from physics/physicslm4_reval_s0/* and seeds 1/2 come from physics/validation_3seed/*; loss/token accuracy are read from analysis/summary.json and DP-KL from analysis/lano_cfg_dp_valid.json.",
+    "Seed-0 Engram slice table uses physics/engram_repro_ngram_d24_s0_matrix/analysis/slices_valid.json; the layerwise collision diagnostic uses the matching physics/engram_repro_ngram_d24_s0_matrix_layerce/* export.",
+    "The 4k attention figure is the 3-seed mixed-ratio sweep under physics/mixed_ratio_3seed/* (100%, 50%, 10%, 0% global-layer schedules).",
+    "The published commands regenerate local ./out/... runs and figures; mapping those outputs to the cited physics/... artifact IDs is still a separate provenance step recorded in this bundle."
+  ]
+}

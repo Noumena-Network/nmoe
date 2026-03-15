@@ -11,6 +11,40 @@ import torch
 import torch.distributed as dist
 
 
+def _runtime_dep_roots(*, repo_root: str | Path | None = None) -> list[Path]:
+  roots: list[Path] = []
+  repo_root_path: Path | None = None
+  if repo_root is not None:
+    repo_root_path = Path(repo_root)
+    roots.append(repo_root_path)
+  else:
+    try:
+      repo_root_path = Path(__file__).resolve().parent.parent
+      roots.append(repo_root_path)
+    except Exception:
+      pass
+
+  if repo_root_path is not None:
+    roots.append(repo_root_path / "triton" / "python")
+
+  roots.extend([
+    Path("/opt/third_party/quack"),
+    Path("/opt/third_party/flash_attn"),
+    Path("/opt/third_party/triton/python"),
+  ])
+
+  for env_key in ("NMOE_QUACK_PATH", "NMOE_FLASH_ATTN_PATH", "NMOE_TRITON_PYTHON_PATH"):
+    value = os.environ.get(env_key, "").strip()
+    if value:
+      roots.append(Path(value))
+
+  out: list[Path] = []
+  for root in roots:
+    if root not in out:
+      out.append(root)
+  return out
+
+
 def _maybe_add_repo_third_party_to_sys_path(*, repo_root: str | Path | None = None) -> None:
   """Make vendored deps under repo-root/third_party importable.
 
@@ -18,28 +52,29 @@ def _maybe_add_repo_third_party_to_sys_path(*, repo_root: str | Path | None = No
   of the image checkout and should be importable without requiring users to
   manually extend PYTHONPATH.
   """
-  root = None
-  if repo_root is not None:
-    root = Path(repo_root)
-  else:
-    try:
-      root = Path(__file__).resolve().parent.parent
-    except Exception:
-      return
-
-  third_party = root / "third_party"
-  if not third_party.is_dir():
-    return
-
-  # Vendored deps are placed as self-contained import roots, e.g.:
-  # - third_party/quack/quack/...
-  # - third_party/flash_attn/flash_attn/...
-  # Add the package roots (not just third_party/).
-  candidates = [
-    third_party / "quack",
-    third_party / "flash_attn",
-    third_party / "nvshmem" / "nvshmem4py",
-  ]
+  candidates: list[Path] = []
+  for root in _runtime_dep_roots(repo_root=repo_root):
+    if root.name == "quack":
+      candidates.append(root)
+      continue
+    if root.name == "flash_attn":
+      candidates.append(root)
+      continue
+    if root.name == "python" and root.parent.name == "triton":
+      candidates.append(root)
+      continue
+    third_party = root / "third_party"
+    if not third_party.is_dir():
+      continue
+    # Vendored deps are placed as self-contained import roots, e.g.:
+    # - third_party/quack/quack/...
+    # - third_party/flash_attn/flash_attn/...
+    # Add the package roots (not just third_party/).
+    candidates.extend([
+      third_party / "quack",
+      third_party / "flash_attn",
+      third_party / "nvshmem" / "nvshmem4py",
+    ])
   for path in candidates:
     if path.is_dir():
       p = str(path)

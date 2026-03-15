@@ -30,6 +30,10 @@ spec:
           value: "/data/metrics"
         - name: NVIZ_EXPERIMENTS_DB
           value: "/data/experiments.db"
+        - name: HOST
+          value: "0.0.0.0"
+        - name: HOSTNAME
+          value: "0.0.0.0"
         resources:
           requests:
             memory: "512Mi"

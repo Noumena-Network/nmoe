@@ -76,7 +76,7 @@ class Rdep:
 
     def moe_blockscaled(self, x: torch.Tensor, eid: torch.Tensor, gates: torch.Tensor,
                         W1: torch.Tensor, W3: torch.Tensor, W2: torch.Tensor,
-                        W_cache, activation: str = "swiglu") -> torch.Tensor:
+                        W_cache, activation: str = "swiglu", forward_ablation: str = "off") -> torch.Tensor:
         if self.profile == 'bf16':
             raise RuntimeError("moe_blockscaled() requires profile in {'fp8','nvfp4'}")
-        return _MoEBlockscaledFused.apply(self, x, eid, gates, W1, W3, W2, W_cache, activation)
+        return _MoEBlockscaledFused.apply(self, x, eid, gates, W1, W3, W2, W_cache, activation, forward_ablation)

@@ -112,6 +112,14 @@ Two workflows:
 
 See `nmoe/data/README.md` for the data contract and golden-path commands.
 
+## Research Reproducibility
+
+Research journals are mirrored in this repo:
+- posts: `content/`
+- figures: `static/figures/`
+
+When a post includes runnable commands, the command surface should use `python -m nmoe...` with configs from `configs/` so results are reproducible from this repo boundary.
+
 ## Metrics & NVIZ
 
 Training writes:
@@ -171,7 +179,7 @@ We prefer one clear way to do each supported job over many interchangeable stack
 
 ## Acknowledgements
 
-This codebase borrows ideas from and interoperates with upstream ecosystems including PyTorch, Triton, NVSHMEM, CUTLASS, and the DeepSeek family of MoE architectures.
+This codebase borrows ideas from and interoperates with upstream ecosystems including PyTorch, Triton, CUTLASS, and the DeepSeek family of MoE architectures.
 See `THIRD_PARTY_NOTICES.md` for license attributions.
 
 ## Cite
@@ -199,7 +207,7 @@ Primary target: B200. Limited H100 support exists for BF16 speedruns only.
 | Problem | Fix |
 |---------|-----|
 | `sm_100a` errors | You are running a B200-only path. For H100, use BF16 + SDPA (e.g. `n speedrun`). |
-| NVSHMEM init fails | Multi-node is out-of-scope for this release. Use single-node IPC. |
+| Multi-node launch attempted | Multi-node is out-of-scope for this release. Use single-node IPC (`torchrun --standalone --nproc_per_node=<N>`). |
 | OOM | Reduce `batch_size` or `seq_len` |
 
 ## License

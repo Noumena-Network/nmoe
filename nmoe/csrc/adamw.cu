@@ -118,7 +118,8 @@ __global__ void k_expert_adamw_w13_update_quant(
     float step_size,
     float inv_bias_correction2_sqrt,
     uint32_t seed,
-    uint32_t step) {
+    uint32_t step,
+    int enable_nvfp4_resonance_dither) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 1000)
   const int e = static_cast<int>(blockIdx.z);
   const int j0 = static_cast<int>(blockIdx.x) * TILE_OUT;
@@ -259,7 +260,7 @@ __global__ void k_expert_adamw_w13_update_quant(
       const int col = col_u16 + p;
       const uint16_t old = out_row[col];
       uint16_t q = ptx::f32x4_to_e2m1x4_packed(v0, v1, v2, v3);
-      if (q == old) {
+      if (enable_nvfp4_resonance_dither != 0 && q == old) {
         uint32_t h = seed;
         h ^= step * 0x9e3779b9u;
         h ^= static_cast<uint32_t>(e) * 0x85ebca6bu;
@@ -330,7 +331,8 @@ __global__ void k_expert_adamw_w2_update_quant(
     float step_size,
     float inv_bias_correction2_sqrt,
     uint32_t seed,
-    uint32_t step) {
+    uint32_t step,
+    int enable_nvfp4_resonance_dither) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 1000)
   const int e = static_cast<int>(blockIdx.z);
   const int d0 = static_cast<int>(blockIdx.x) * TILE_K;     // K dimension in cache = Dff
@@ -436,7 +438,7 @@ __global__ void k_expert_adamw_w2_update_quant(
       const int col = col_u16 + p;
       const uint16_t old = out_row[col];
       uint16_t q = ptx::f32x4_to_e2m1x4_packed(v0, v1, v2, v3);
-      if (q == old) {
+      if (enable_nvfp4_resonance_dither != 0 && q == old) {
         uint32_t h = seed;
         h ^= step * 0x9e3779b9u;
         h ^= static_cast<uint32_t>(e) * 0x85ebca6bu;
@@ -510,6 +512,7 @@ inline cudaError_t launch_expert_adamw_step(
     float inv_bias_correction2_sqrt,
     uint32_t seed,
     uint32_t step,
+    int enable_nvfp4_resonance_dither,
     cudaStream_t stream) {
   if ((H & 127) != 0) return cudaErrorInvalidValue;
   if ((Dff & 127) != 0) return cudaErrorInvalidValue;
@@ -527,7 +530,7 @@ inline cudaError_t launch_expert_adamw_step(
         W13_q_u16, W13_sf_mma,
         E, H, Dff,
         lr, beta1, beta2, weight_decay, eps, step_size, inv_bias_correction2_sqrt,
-        seed, step);
+        seed, step, enable_nvfp4_resonance_dither);
   } else if (profile == 1) {
     k_expert_adamw_w13_update_quant<true><<<grid_w13, block, 0, stream>>>(
         W1, dW1, m1, v1,
@@ -535,7 +538,7 @@ inline cudaError_t launch_expert_adamw_step(
         W13_q_u16, W13_sf_mma,
         E, H, Dff,
         lr, beta1, beta2, weight_decay, eps, step_size, inv_bias_correction2_sqrt,
-        seed, step);
+        seed, step, enable_nvfp4_resonance_dither);
   } else {
     return cudaErrorInvalidValue;
   }
@@ -550,14 +553,14 @@ inline cudaError_t launch_expert_adamw_step(
         W2_q_u16, W2_sf_mma,
         E, H, Dff,
         lr, beta1, beta2, weight_decay, eps, step_size, inv_bias_correction2_sqrt,
-        seed, step);
+        seed, step, enable_nvfp4_resonance_dither);
   } else {
     k_expert_adamw_w2_update_quant<true><<<grid_w2, block, 0, stream>>>(
         W2, dW2, m2, v2,
         W2_q_u16, W2_sf_mma,
         E, H, Dff,
         lr, beta1, beta2, weight_decay, eps, step_size, inv_bias_correction2_sqrt,
-        seed, step);
+        seed, step, enable_nvfp4_resonance_dither);
   }
   return cudaGetLastError();
 }
@@ -599,6 +602,7 @@ extern "C" cudaError_t expert_adamw_step(
     float inv_bias_correction2_sqrt,
     uint32_t seed,
     uint32_t step,
+    int enable_nvfp4_resonance_dither,
     cudaStream_t stream) {
   return nmoe::adamw::launch_expert_adamw_step(
       profile,
@@ -630,5 +634,6 @@ extern "C" cudaError_t expert_adamw_step(
       inv_bias_correction2_sqrt,
       seed,
       step,
+      enable_nvfp4_resonance_dither,
       stream);
 }

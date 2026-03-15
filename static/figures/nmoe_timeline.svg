@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="220" viewBox="0 0 640.0 220" role="img" aria-label="Timeline from prototype to shipped nmoe and then speedruns/miniseries research.">
+<style>
+  .t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}
+  .m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}
+  .muted{fill:#7c7c7c}
+  .box{fill:#ffffff;stroke:#b8b1aa;stroke-width:1.2}
+  .accent{stroke:#FF9101;stroke-width:2}
+  .arrow{stroke:#6b6b6b;stroke-width:1.6;fill:none;marker-end:url(#arrow)}
+</style>
+
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b6b6b" />
+  </marker>
+</defs>
+
+<text x="320" y="24" font-size="15" text-anchor="middle" class="t">From “I want a small MoE research repo” to a shipped system + science loop</text>
+<text x="320" y="42" font-size="12" text-anchor="middle" class="t muted">(chronological framing for posts 0000–0006)</text>
+
+<!-- Boxes -->
+<rect x="29.8" y="72" width="134" height="92" rx="10" class="box"/>
+<line x1="29.8" y1="72" x2="163.7" y2="72" class="accent"/>
+<text x="96.7" y="104" font-size="12" text-anchor="middle" class="t">Prototype repo</text>
+<text x="96.7" y="126" font-size="11" text-anchor="middle" class="t muted">research first</text>
+<text x="96.7" y="146" font-size="11" text-anchor="middle" class="t muted">fast iteration</text>
+
+<rect x="186" y="72" width="134" height="92" rx="10" class="box"/>
+<line x1="186" y1="72" x2="320" y2="72" class="accent"/>
+<text x="253" y="104" font-size="12" text-anchor="middle" class="t">Rewrite repo</text>
+<text x="253" y="126" font-size="11" text-anchor="middle" class="t muted">production constraints</text>
+<text x="253" y="146" font-size="11" text-anchor="middle" class="t muted">determinism + logging</text>
+
+<rect x="342.3" y="72" width="134" height="92" rx="10" class="box"/>
+<line x1="342.3" y1="72" x2="476.3" y2="72" class="accent"/>
+<text x="409.3" y="98" font-size="12" text-anchor="middle" class="t">Ship</text>
+<text x="409.3" y="116" font-size="12" text-anchor="middle" class="m">nmoe</text>
+<text x="409.3" y="126" font-size="11" text-anchor="middle" class="t muted">container-first</text>
+<text x="409.3" y="146" font-size="11" text-anchor="middle" class="t muted">TOML-only</text>
+
+<rect x="498.6" y="72" width="111.6" height="92" rx="10" class="box"/>
+<line x1="498.6" y1="72" x2="610.2" y2="72" class="accent"/>
+<text x="554.4" y="104" font-size="12" text-anchor="middle" class="t">Research loop</text>
+<text x="554.4" y="126" font-size="11" text-anchor="middle" class="t muted">speedruns</text>
+<text x="554.4" y="146" font-size="11" text-anchor="middle" class="t muted">miniseries</text>
+
+<!-- Arrows connecting boxes -->
+<path d="M 167 118 L 182 118" class="arrow"/>
+<path d="M 323 118 L 338 118" class="arrow"/>
+<path d="M 480 118 L 495 118" class="arrow"/>
+
+<!-- Labels -->
+<text x="96.7" y="192" font-size="11" text-anchor="middle" class="t muted">0000: dragons + why build</text>
+<text x="253" y="192" font-size="11" text-anchor="middle" class="t muted">0001: system contracts</text>
+<text x="409.3" y="192" font-size="11" text-anchor="middle" class="t muted">0002: eval loop</text>
+<text x="554.4" y="192" font-size="11" text-anchor="middle" class="t muted">0003–0006: results</text>
+</svg>

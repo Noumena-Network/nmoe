@@ -1,0 +1,57 @@
+name = "speedrun_super_benchmark"
+kind = "speedrun"
+runner = "speedrun"
+description = "Fixed-step benchmark loop for canonical super speedrun candidates on the full speedrun dataset."
+
+[runtime.speedrun]
+config = "super"
+dtype = "fp8"
+eval_enabled = false
+
+[objective]
+primary_metric = "final_loss"
+direction = "min"
+min_delta_abs = 0.01
+
+[objective.constraints]
+max_final_loss = 10.0
+
+[baseline]
+source = "campaign_receipts"
+
+[budget.benchmark]
+steps = 512
+max_wall_s = 3600
+
+[mutation]
+tier = "config_only"
+allowed_overrides = [
+  "activation",
+  "lr_dense",
+  "lr_router",
+  "lr_expert",
+  "router_bias_update_rate",
+  "aux_loss_alpha",
+  "route_scale",
+  "warmup_steps",
+  "hold_tokens",
+  "decay_tokens",
+  "decay_floor",
+]
+allowed_files = [
+  "configs/speedrun/super.toml",
+  "configs/gates/gates.toml",
+]
+
+[search]
+strategy = "coordinate_descent"
+max_trials = 4
+max_no_improve = 2
+candidate_prefix = "auto"
+
+[[search.axis]]
+key = "aux_loss_alpha"
+values = ["0.0", "0.00005", "0.0001", "0.00015", "0.0002", "0.0005", "0.001"]
+
+[outputs]
+receipt_dir = "repro/campaign_runs"

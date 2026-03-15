@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="680" viewBox="0 0 640 680" role="img">
+<style>.t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}.m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}.muted{fill:#7c7c7c}.axis{stroke:#6b6b6b;stroke-width:1}.grid{stroke:#b8b1aa;stroke-width:1;opacity:.35}.dotted{stroke-dasharray:4 4}</style>
+<text x="320" y="24" font-size="18" text-anchor="middle" class="t">Super-4096: loss can look fine while routing collapses</text>
+<text x="320" y="46" font-size="13" text-anchor="middle" class="t muted">(why loss alone is an unsafe training signal for MoE)</text>
+<g transform="translate(0 54)">
+<text x="320.0" y="24" font-size="18" text-anchor="middle" class="t">Super-4096: loss improves</text>
+<text x="320.0" y="46" font-size="13" text-anchor="middle" class="t muted">BF16, K=7; validation every 128 steps</text>
+<line x1="64.0" y1="64" x2="64.0" y2="266" class="grid" />
+<text x="64.0" y="288" font-size="12" text-anchor="middle" class="t muted">0</text>
+<line x1="203.5" y1="64" x2="203.5" y2="266" class="grid" />
+<text x="203.5" y="288" font-size="12" text-anchor="middle" class="t muted">3k</text>
+<line x1="343.0" y1="64" x2="343.0" y2="266" class="grid" />
+<text x="343.0" y="288" font-size="12" text-anchor="middle" class="t muted">6k</text>
+<line x1="482.5" y1="64" x2="482.5" y2="266" class="grid" />
+<text x="482.5" y="288" font-size="12" text-anchor="middle" class="t muted">9k</text>
+<line x1="622.0" y1="64" x2="622.0" y2="266" class="grid" />
+<text x="622.0" y="288" font-size="12" text-anchor="middle" class="t muted">12k</text>
+<line x1="64" y1="251.6" x2="622" y2="251.6" class="grid" />
+<text x="54" y="255.6" font-size="12" text-anchor="end" class="t muted">3.5</text>
+<line x1="64" y1="203.5" x2="622" y2="203.5" class="grid" />
+<text x="54" y="207.5" font-size="12" text-anchor="end" class="t muted">4.5</text>
+<line x1="64" y1="155.4" x2="622" y2="155.4" class="grid" />
+<text x="54" y="159.4" font-size="12" text-anchor="end" class="t muted">5.5</text>
+<line x1="64" y1="107.3" x2="622" y2="107.3" class="grid" />
+<text x="54" y="111.3" font-size="12" text-anchor="end" class="t muted">6.5</text>
+<line x1="64" y1="266" x2="622" y2="266" class="axis" />
+<line x1="64" y1="266" x2="64" y2="64" class="axis" />
+<text x="343.0" y="306" font-size="13" text-anchor="middle" class="t">Training step</text>
+<text x="18" y="165.0" font-size="13" text-anchor="middle" class="t" transform="rotate(-90 18 165.0)">Validation loss</text>
+<path d="M 70.0 74.3 L 75.9 127.6 L 81.9 149.1 L 87.8 164.6 L 93.8 174.2 L 99.7 182.1 L 105.7 188.6 L 111.6 193.1 L 117.6 197.6 L 123.5 202.1 L 129.5 206.1 L 135.4 209.2 L 141.4 211.9 L 147.3 213.6 L 153.3 215.7 L 159.2 217.4 L 165.2 219.0 L 171.1 220.4 L 177.1 221.7 L 183.0 222.9 L 189.0 223.8 L 194.9 225.0 L 200.9 226.0 L 206.8 227.4 L 212.8 228.5 L 218.8 229.0 L 224.7 230.3 L 230.7 230.9 L 236.6 231.9 L 242.6 232.7 L 248.5 233.0 L 254.5 233.7 L 260.4 234.4 L 266.4 234.9 L 272.3 235.6 L 278.3 236.1 L 284.2 236.9 L 290.2 237.2 L 296.1 237.2 L 302.1 238.0 L 308.0 238.0 L 314.0 238.9 L 319.9 239.3 L 325.9 239.8 L 331.8 239.7 L 337.8 240.0 L 343.7 240.2 L 349.7 239.6 L 355.6 240.6 L 361.6 240.5 L 367.6 241.8 L 373.5 242.1 L 379.5 242.4 L 385.4 242.6 L 391.4 243.0 L 397.3 243.1 L 403.3 243.3 L 409.2 242.6 L 415.2 243.8 L 421.1 243.9 L 427.1 244.0 L 433.0 244.3 L 439.0 244.4 L 444.9 244.9 L 450.9 245.4 L 456.8 245.6 L 462.8 246.0 L 468.7 246.3 L 474.7 245.9 L 480.6 246.3 L 486.6 246.6 L 492.5 246.7 L 498.5 247.0 L 504.4 247.5 L 510.4 247.6 L 516.4 248.1 L 522.3 248.0 L 528.3 248.5 L 534.2 249.2 L 540.2 249.6 L 546.1 249.9 L 552.1 250.7 L 558.0 251.3 L 564.0 251.9 L 569.9 252.4 L 575.9 252.8 L 581.8 253.0 L 587.8 253.1 L 593.7 253.2 L 599.7 253.2 L 605.6 253.2 L 611.6 253.2 L 617.5 253.2 L 622.0 253.2" stroke="#FF9101" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+</g>
+<g transform="translate(0 368)">
+<text x="320.0" y="24" font-size="18" text-anchor="middle" class="t">Super-4096: max_load hits the 1/K ceiling</text>
+<text x="320.0" y="46" font-size="13" text-anchor="middle" class="t muted">Layer 0 collapses early; later layers follow</text>
+<line x1="64.0" y1="64" x2="64.0" y2="266" class="grid" />
+<text x="64.0" y="288" font-size="12" text-anchor="middle" class="t muted">0</text>
+<line x1="203.5" y1="64" x2="203.5" y2="266" class="grid" />
+<text x="203.5" y="288" font-size="12" text-anchor="middle" class="t muted">3k</text>
+<line x1="343.0" y1="64" x2="343.0" y2="266" class="grid" />
+<text x="343.0" y="288" font-size="12" text-anchor="middle" class="t muted">6k</text>
+<line x1="482.5" y1="64" x2="482.5" y2="266" class="grid" />
+<text x="482.5" y="288" font-size="12" text-anchor="middle" class="t muted">9k</text>
+<line x1="622.0" y1="64" x2="622.0" y2="266" class="grid" />
+<text x="622.0" y="288" font-size="12" text-anchor="middle" class="t muted">12k</text>
+<line x1="64" y1="266.0" x2="622" y2="266.0" class="grid" />
+<text x="54" y="270.0" font-size="12" text-anchor="end" class="t muted">0%</text>
+<line x1="64" y1="198.7" x2="622" y2="198.7" class="grid" />
+<text x="54" y="202.7" font-size="12" text-anchor="end" class="t muted">5%</text>
+<line x1="64" y1="131.3" x2="622" y2="131.3" class="grid" />
+<text x="54" y="135.3" font-size="12" text-anchor="end" class="t muted">10%</text>
+<line x1="64" y1="73.6" x2="622" y2="73.6" class="grid" />
+<text x="54" y="77.6" font-size="12" text-anchor="end" class="t muted">1/K</text>
+<line x1="64" y1="266" x2="622" y2="266" class="axis" />
+<line x1="64" y1="266" x2="64" y2="64" class="axis" />
+<text x="343.0" y="306" font-size="13" text-anchor="middle" class="t">Training step</text>
+<text x="18" y="165.0" font-size="13" text-anchor="middle" class="t" transform="rotate(-90 18 165.0)">Router max_load (%)</text>
+<path d="M 64.0 240.2 L 68.7 242.4 L 73.3 255.0 L 78.0 254.7 L 82.6 256.3 L 87.2 183.8 L 91.9 161.8 L 96.5 135.8 L 101.2 88.1 L 105.8 80.0 L 110.5 81.9 L 115.2 77.7 L 119.8 73.8 L 124.5 73.8 L 129.1 74.9 L 133.8 78.3 L 138.4 75.3 L 143.1 73.8 L 147.7 74.0 L 152.3 73.7 L 157.0 73.7 L 161.6 73.7 L 166.3 73.8 L 170.9 73.9 L 175.6 74.2 L 180.2 73.8 L 184.9 73.7 L 189.6 73.7 L 194.2 73.8 L 198.8 73.9 L 203.5 73.8 L 208.2 73.9 L 212.8 73.8 L 217.5 73.8 L 222.1 73.8 L 226.8 73.8 L 231.4 73.7 L 236.1 73.7 L 240.7 73.8 L 245.3 73.8 L 250.0 73.7 L 254.7 73.7 L 259.3 73.7 L 263.9 73.8 L 268.6 73.8 L 273.2 74.0 L 277.9 74.1 L 282.6 73.8 L 287.2 73.8 L 291.9 73.8 L 296.5 73.8 L 301.1 73.8 L 305.8 73.9 L 310.4 74.0 L 315.1 73.8 L 319.8 73.7 L 324.4 73.7 L 329.1 73.7 L 333.7 73.8 L 338.3 73.9 L 343.0 74.0 L 347.6 74.1 L 352.3 74.0 L 356.9 74.2 L 361.6 74.3 L 366.2 74.2 L 370.9 74.2 L 375.6 73.8 L 380.2 73.8 L 384.8 73.8 L 389.5 73.8 L 394.1 73.9 L 398.8 73.9 L 403.4 73.8 L 408.1 73.7 L 412.8 73.7 L 417.4 73.7 L 422.1 73.7 L 426.7 73.7 L 431.4 73.7 L 436.0 73.8 L 440.7 73.8 L 445.3 73.8 L 449.9 73.8 L 454.6 73.9 L 459.2 74.0 L 463.9 73.9 L 468.6 73.9 L 473.2 74.0 L 477.9 74.0 L 482.5 74.2 L 487.1 73.7 L 491.8 73.7 L 496.4 73.7 L 501.1 73.7 L 505.8 73.7 L 510.4 73.8 L 515.0 73.8 L 519.7 73.8 L 524.3 73.8 L 529.0 73.8 L 533.6 73.9 L 538.3 73.7 L 543.0 73.7 L 547.6 73.7 L 552.2 73.7 L 556.9 73.7 L 561.5 73.7 L 566.2 73.8 L 570.9 73.7 L 575.5 73.7 L 580.1 73.7 L 584.8 73.7 L 589.5 73.7 L 594.1 73.7 L 598.8 73.8 L 603.4 73.7 L 608.0 73.8 L 612.7 73.8 L 617.4 73.7 L 622.0 73.7" stroke="#FF9101" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<path d="M 64.0 248.2 L 68.7 166.8 L 73.3 248.2 L 78.0 143.3 L 82.6 213.7 L 87.2 248.0 L 91.9 255.0 L 96.5 244.3 L 101.2 223.4 L 105.8 222.3 L 110.5 250.1 L 115.2 256.7 L 119.8 255.3 L 124.5 255.0 L 129.1 257.4 L 133.8 251.0 L 138.4 253.4 L 143.1 258.4 L 147.7 255.5 L 152.3 254.5 L 157.0 255.7 L 161.6 241.1 L 166.3 221.0 L 170.9 206.4 L 175.6 179.6 L 180.2 172.6 L 184.9 141.4 L 189.6 142.9 L 194.2 136.9 L 198.8 128.1 L 203.5 153.1 L 208.2 139.4 L 212.8 140.0 L 217.5 116.6 L 222.1 116.8 L 226.8 118.0 L 231.4 109.8 L 236.1 114.1 L 240.7 120.4 L 245.3 111.4 L 250.0 108.4 L 254.7 103.9 L 259.3 114.2 L 263.9 113.7 L 268.6 110.5 L 273.2 111.7 L 277.9 112.0 L 282.6 93.3 L 287.2 93.7 L 291.9 87.9 L 296.5 90.5 L 301.1 89.5 L 305.8 97.5 L 310.4 92.3 L 315.1 90.5 L 319.8 89.4 L 324.4 95.7 L 329.1 95.8 L 333.7 110.0 L 338.3 107.1 L 343.0 103.7 L 347.6 85.4 L 352.3 86.8 L 356.9 84.8 L 361.6 87.1 L 366.2 89.5 L 370.9 83.7 L 375.6 82.3 L 380.2 79.8 L 384.8 80.7 L 389.5 82.3 L 394.1 85.8 L 398.8 90.3 L 403.4 83.4 L 408.1 82.1 L 412.8 81.3 L 417.4 80.3 L 422.1 83.7 L 426.7 84.9 L 431.4 89.3 L 436.0 85.0 L 440.7 79.1 L 445.3 76.3 L 449.9 77.9 L 454.6 78.9 L 459.2 78.1 L 463.9 76.2 L 468.6 76.7 L 473.2 77.0 L 477.9 77.7 L 482.5 79.7 L 487.1 85.8 L 491.8 80.7 L 496.4 81.0 L 501.1 78.0 L 505.8 78.1 L 510.4 80.1 L 515.0 80.1 L 519.7 79.1 L 524.3 78.2 L 529.0 78.1 L 533.6 78.0 L 538.3 78.6 L 543.0 83.0 L 547.6 83.7 L 552.2 85.7 L 556.9 79.7 L 561.5 76.5 L 566.2 78.0 L 570.9 75.8 L 575.5 76.1 L 580.1 76.5 L 584.8 76.6 L 589.5 77.0 L 594.1 76.9 L 598.8 77.4 L 603.4 76.8 L 608.0 76.6 L 612.7 76.4 L 617.4 76.3 L 622.0 76.3" stroke="#6a8a9a" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<path d="M 64.0 73.6 L 622.0 73.6" stroke="#b8b1aa" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" class="dotted" />
+<rect x="64" y="56" width="12" height="12" fill="#FF9101" />
+<text x="80" y="66" font-size="12" text-anchor="start" class="t muted">layer 0</text>
+<rect x="137" y="56" width="12" height="12" fill="#6a8a9a" />
+<text x="153" y="66" font-size="12" text-anchor="start" class="t muted">layer 11</text>
+<rect x="217" y="56" width="12" height="12" fill="#b8b1aa" />
+<text x="233" y="66" font-size="12" text-anchor="start" class="t muted">1/K</text>
+</g>
+</svg>

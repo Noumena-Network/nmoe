@@ -1,5 +1,5 @@
 #!/bin/bash
-# nmoe bootstrap for cloud GPU instances (Prime Intellect, Lambda, etc.)
+# nmoe bootstrap for cloud GPU instances (cloud GPU providers)
 #
 # This is the HOST bootstrap path (non-default). The golden path is Docker.
 # Use this for quick iteration on cloud instances without Docker.

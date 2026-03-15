@@ -1,0 +1,129 @@
+{
+  "post": "0011",
+  "title": "Let the Speedrun Search Itself",
+  "evidence_tier": "internal_repro",
+  "status": "complete_for_scope",
+  "generated_at_utc": "2026-03-09T20:00:33Z",
+  "summary": "Eval-gated autoresearch receipts for the canonical super fp8 speedrun lane. This package captures the raw campaign receipts, champion progression, NVIZ-backed run summaries, and the config/worker surfaces that define the bounded controller.",
+  "runs": {
+    "seed": "run_1773069925_24005",
+    "aux_wakeup": "run_1773071088_26707",
+    "dense_0020": "run_1773082834_89",
+    "dense_0022": "run_1773082837_89",
+    "refine_keep": "run_1773084735_88",
+    "refine_core_veto": "run_1773084733_89"
+  },
+  "artifacts": [
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/0011_autoresearch_manifest.json"
+    },
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/0011_autoresearch_progression.json"
+    },
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/0011_autoresearch_receipts.json"
+    },
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/0011_autoresearch_run_summaries.json"
+    },
+    {
+      "kind": "site_figure",
+      "path": "nmoe/static/figures/0011_autoresearch_progression.svg",
+      "logical_path": "/figures/0011_autoresearch_progression.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "nmoe/static/figures/0011_autoresearch_refinement_gate.svg",
+      "logical_path": "/figures/0011_autoresearch_refinement_gate.svg"
+    },
+    {
+      "kind": "campaign_receipt_json",
+      "path": "campaign_runs/speedrun_super_research/benchmark/20260309T152511Z_research-seed.json"
+    },
+    {
+      "kind": "campaign_receipt_json",
+      "path": "campaign_runs/speedrun_super_research/benchmark/20260309T154433Z_research-aux_loss_alpha-0.00015.json"
+    },
+    {
+      "kind": "campaign_receipt_json",
+      "path": "campaign_runs/speedrun_super_research/benchmark/20260309T163037Z_research-aux_loss_alpha-0.0005.json"
+    },
+    {
+      "kind": "campaign_receipt_json",
+      "path": "campaign_runs/speedrun_super_research/benchmark/20260309T190016Z_research-lr_dense-0.0020.json"
+    },
+    {
+      "kind": "campaign_receipt_json",
+      "path": "campaign_runs/speedrun_super_research/benchmark/20260309T190020Z_research-lr_dense-0.0022.json"
+    },
+    {
+      "kind": "campaign_receipt_json",
+      "path": "campaign_runs/speedrun_super_research/benchmark/20260309T190047Z_research-lr_router-0.0021.json"
+    },
+    {
+      "kind": "campaign_receipt_json",
+      "path": "campaign_runs/speedrun_super_research/benchmark/20260309T193155Z_research-aux_loss_alpha-0.00018.json"
+    },
+    {
+      "kind": "campaign_receipt_json",
+      "path": "campaign_runs/speedrun_super_research/benchmark/20260309T193157Z_research-aux_loss_alpha-0.00012.json"
+    },
+    {
+      "kind": "campaign_receipt_json",
+      "path": "campaign_runs/speedrun_super_research/benchmark/20260309T193159Z_research-aux_loss_alpha-0.0002.json"
+    },
+    {
+      "kind": "campaign_receipt_json",
+      "path": "campaign_runs/speedrun_super_research/benchmark/20260309T193202Z_research-lr_router-0.0021.json"
+    },
+    {
+      "kind": "campaign_spec",
+      "path": "nmoe/campaigns/speedrun_super_research.toml"
+    },
+    {
+      "kind": "campaign_controller",
+      "path": "nmoe/nmoe/campaigns.py"
+    },
+    {
+      "kind": "campaign_cli",
+      "path": "nmoe/nmoe/cli/main.py"
+    },
+    {
+      "kind": "campaign_worker_manifest",
+      "path": "nmoe/k8s/campaign-worker.yaml"
+    },
+    {
+      "kind": "campaign_priority_class",
+      "path": "nmoe/k8s/autoresearch-priorityclass.yaml"
+    },
+    {
+      "kind": "artifact_export_script",
+      "path": "nmoe/scripts/repro/export_autoresearch_blog_artifacts.py"
+    }
+  ],
+  "repro_commands": [
+    "python -m nmoe.cli.main campaign show speedrun_super_research",
+    "python -m nmoe.cli.main campaign auto speedrun_super_research --stage benchmark --max-trials 8"
+  ],
+  "provenance_commands": [
+    "python -m nmoe.cli.main campaign auto speedrun_super_research --stage benchmark --receipt-dir campaign_runs --max-trials 1",
+    "python scripts/repro/export_autoresearch_blog_artifacts.py --receipt-dir campaign_runs/speedrun_super_research/benchmark --output-dir blog_artifacts --post 0011 --campaign speedrun_super_research --nviz-base-url http://127.0.0.1:3001"
+  ],
+  "commands": [
+    "python -m nmoe.cli.main campaign show speedrun_super_research",
+    "python -m nmoe.cli.main campaign auto speedrun_super_research --stage benchmark --max-trials 8"
+  ],
+  "notes": [
+    "This campaign is intentionally config-only: the controller can only mutate allowlisted TOML/config keys and must reuse the canonical nmoe runner.",
+    "REPRO: repro_commands run the full campaign from a fresh clone on one 8-GPU machine. The search logic, eval gate, and receipt system are identical to the original run. Candidates run sequentially instead of in parallel.",
+    "PROVENANCE: provenance_commands document how the original result was produced: 4 parallel GPU workers with shared receipt storage, kubectl-managed cluster fanout, and NVIZ-backed artifact export. These are not required for reproduction.",
+    "blog_artifacts/0011_autoresearch_progression.json records only global champion updates; parallel waves may contain additional locally kept candidates that improved against an older shared baseline but were not the final champion.",
+    "blog_artifacts/0011_autoresearch_receipts.json retains failed and vetoed candidates so negative results remain machine-readable.",
+    "research-aux_loss_alpha-0.00018 achieved the best raw validation loss in the final refinement wave, but was vetoed because CORE fell past the allowed 0.002 drop budget.",
+    "The final champion is research-aux_loss_alpha-0.00012 with lr_dense=0.0022: final_valid_loss=5.119999885559082, CORE=-0.013624577546898952, and throughput/tokens_per_s_gpu=100724.1893794376."
+  ]
+}

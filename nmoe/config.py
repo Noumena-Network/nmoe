@@ -67,6 +67,7 @@ class Config:
   # For non-NVFP4 runs, these must be left unset.
   fp4_embed_gain: Optional[float] = None
   fp4_logits_gain: Optional[float] = None
+  nvfp4_resonance_dither: bool = True  # Conditional deterministic dither in expert cache emission.
   rope_scaling_factor: float = 1.0
   rope_ntk_alpha: float = 1.0
   rope_ntk_beta: float = 32.0
@@ -83,6 +84,11 @@ class Config:
 
   # Precision
   dtype: Optional[str] = "bf16"  # bf16 | fp8 | nvfp4
+  # Research-only forward ablations for blockscaled MoE. These keep the
+  # existing blockscaled backward path and only swap selected forward pieces
+  # back to BF16 for causal diagnosis. The *_fp8 variants are NVFP4-only and
+  # keep the same BF16 swaps while forcing the remaining quantized pieces to FP8.
+  blockscaled_forward_ablation: str = "off"  # off | w13_bf16 | stage1_bf16 | full_bf16 | w13_fp8 | w2_fp8 | stage1_fp8 | full_fp8
 
   # Activation function
   activation: str = "swiglu"  # swiglu | relu_squared | squared_reglu
@@ -128,6 +134,7 @@ class Config:
   seq_len: int = 4096
   seed: int = 42
   log_every: int = 10
+  collect_update_stats: bool = True  # Per-group update diagnostics on log steps; disable for long sweeps.
   # Loss masking: by default we treat eos_token_id as padding and exclude it from loss.
   # For benchmarks where EOS/BOS is a real token (e.g. GPT-2 FineWeb .bin streams), set false.
   loss_mask_eos: bool = True
@@ -249,6 +256,26 @@ class Config:
   attn_nsa: Dict[str, Any] = field(default_factory=dict)
   attn_dsa: Dict[str, Any] = field(default_factory=dict)
 
+  def __post_init__(self):
+    valid_dtypes = {"bf16", "fp8", "nvfp4"}
+    valid_ablations = {"off", "w13_bf16", "stage1_bf16", "full_bf16", "w13_fp8", "w2_fp8", "stage1_fp8", "full_fp8"}
+
+    if isinstance(self.dtype, str):
+      self.dtype = self.dtype.strip().lower()
+    if self.dtype is not None and self.dtype not in valid_dtypes:
+      raise ValueError(f"dtype must be one of {tuple(sorted(valid_dtypes))}, got {self.dtype!r}")
+
+    self.blockscaled_forward_ablation = str(self.blockscaled_forward_ablation or "off").strip().lower()
+    if self.blockscaled_forward_ablation not in valid_ablations:
+      raise ValueError(
+        "blockscaled_forward_ablation must be one of "
+        f"{tuple(sorted(valid_ablations))}, got {self.blockscaled_forward_ablation!r}"
+      )
+    if self.blockscaled_forward_ablation != "off" and self.dtype not in {"fp8", "nvfp4"}:
+      raise ValueError("blockscaled_forward_ablation requires dtype in {'fp8', 'nvfp4'}")
+    if self.blockscaled_forward_ablation in {"w13_fp8", "w2_fp8", "stage1_fp8", "full_fp8"} and self.dtype != "nvfp4":
+      raise ValueError("w13_fp8/w2_fp8/stage1_fp8/full_fp8 require dtype='nvfp4'")
+
 # =============================================================================
 # Config attributes used by nmoe.attention.*
 # =============================================================================
@@ -327,6 +354,7 @@ class Config:
 #
 # Optional:
 #   dtype                 - 'bf16', 'fp8', or 'nvfp4' (default: 'bf16')
+#   blockscaled_forward_ablation - 'off', 'w13_bf16', 'stage1_bf16', 'full_bf16', 'w13_fp8', 'w2_fp8', 'stage1_fp8', or 'full_fp8' (default: 'off')
 
 
 # =============================================================================

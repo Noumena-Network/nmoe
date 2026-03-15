@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="320" viewBox="0 0 640 320" role="img">
+<style>.t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}.m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}.muted{fill:#7c7c7c}.axis{stroke:#6b6b6b;stroke-width:1}.grid{stroke:#b8b1aa;stroke-width:1;opacity:.35}.dotted{stroke-dasharray:4 4}</style>
+<text x="320" y="24" font-size="18" text-anchor="middle" class="t">At small batch, dispatch dominates expert forward time</text>
+<text x="320" y="46" font-size="13" text-anchor="middle" class="t muted">(8×B200, bs=8, seq=4096, E=64, K=6)</text>
+<line x1="64.0" y1="64" x2="64.0" y2="236" class="grid" />
+<text x="64.0" y="258" font-size="12" text-anchor="middle" class="t muted">0</text>
+<line x1="157.0" y1="64" x2="157.0" y2="236" class="grid" />
+<text x="157.0" y="258" font-size="12" text-anchor="middle" class="t muted">1</text>
+<line x1="250.0" y1="64" x2="250.0" y2="236" class="grid" />
+<text x="250.0" y="258" font-size="12" text-anchor="middle" class="t muted">2</text>
+<line x1="343.0" y1="64" x2="343.0" y2="236" class="grid" />
+<text x="343.0" y="258" font-size="12" text-anchor="middle" class="t muted">3</text>
+<line x1="436.0" y1="64" x2="436.0" y2="236" class="grid" />
+<text x="436.0" y="258" font-size="12" text-anchor="middle" class="t muted">4</text>
+<line x1="529.0" y1="64" x2="529.0" y2="236" class="grid" />
+<text x="529.0" y="258" font-size="12" text-anchor="middle" class="t muted">5</text>
+<line x1="622.0" y1="64" x2="622.0" y2="236" class="grid" />
+<text x="622.0" y="258" font-size="12" text-anchor="middle" class="t muted">6</text>
+<line x1="64" y1="236" x2="622" y2="236" class="axis" />
+<line x1="64" y1="236" x2="64" y2="64" class="axis" />
+<text x="343.0" y="286" font-size="13" text-anchor="middle" class="t">Milliseconds (forward, per layer group)</text>
+<rect x="64.0" y="112" width="30.7" height="34" fill="#9aa7b1" rx="3" ry="3" />
+<rect x="94.7" y="112" width="322.7" height="34" fill="#FF9101" rx="3" ry="3" />
+<text x="256.0" y="134" font-size="12" text-anchor="middle" class="t">A2A[X]</text>
+<rect x="417.4" y="112" width="3.7" height="34" fill="#c4b7ad" rx="3" ry="3" />
+<rect x="421.1" y="112" width="3.7" height="34" fill="#c4b7ad" rx="3" ry="3" />
+<rect x="424.8" y="112" width="9.3" height="34" fill="#9aa7b1" rx="3" ry="3" />
+<rect x="434.1" y="112" width="190.6" height="34" fill="#6a8a9a" rx="3" ry="3" />
+<text x="529.5" y="134" font-size="12" text-anchor="middle" class="t">compute</text>
+<text x="64" y="180" font-size="13" text-anchor="start" class="m muted">total ≈ 6.03 ms</text>
+<rect x="64" y="286" width="12" height="12" fill="#9aa7b1" />
+<text x="80" y="296" font-size="11" text-anchor="start" class="t muted">pack</text>
+<rect x="126" y="286" width="12" height="12" fill="#FF9101" />
+<text x="142" y="296" font-size="11" text-anchor="start" class="t muted">A2A[X]</text>
+<rect x="202" y="286" width="12" height="12" fill="#c4b7ad" />
+<text x="218" y="296" font-size="11" text-anchor="start" class="t muted">A2A[meta]</text>
+<rect x="299" y="286" width="12" height="12" fill="#9aa7b1" />
+<text x="315" y="296" font-size="11" text-anchor="start" class="t muted">unpack</text>
+<rect x="375" y="286" width="12" height="12" fill="#6a8a9a" />
+<text x="391" y="296" font-size="11" text-anchor="start" class="t muted">compute</text>
+</svg>

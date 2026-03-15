@@ -1,0 +1,58 @@
+{
+  "post": "0002",
+  "title": "Make It Measurable",
+  "evidence_tier": "external_repro",
+  "status": "complete_for_scope",
+  "generated_at_utc": "2026-03-03T16:15:00Z",
+  "summary": "Measurement contract receipts: healthy vs collapsed router telemetry and a three-panel bpb/CORE/router-health example with task-bootstrap CORE variance inputs.",
+  "runs": {
+    "collapsed": "run_1768063844_579017",
+    "healthy": "run_1767932268_736761",
+    "three_panel_example": "ms_20260112_084552_d12"
+  },
+  "artifacts": [
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/0002_router_health_healthy_vs_collapsed.json"
+    },
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/0002_three_panel_example_ms_20260112_084552_d12.json"
+    },
+    {
+      "kind": "blog_artifact_json",
+      "path": "blog_artifacts/0004_miniseries_ms_20260112_084552_core_summaries.json"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/eval_loop.svg",
+      "logical_path": "/figures/eval_loop.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/miniseries_bpb_core_example.svg",
+      "logical_path": "/figures/miniseries_bpb_core_example.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/router_health_healthy_vs_collapsed.svg",
+      "logical_path": "/figures/router_health_healthy_vs_collapsed.svg"
+    },
+    {
+      "kind": "site_figure",
+      "path": "static/figures/super4096_loss_router.svg",
+      "logical_path": "/figures/super4096_loss_router.svg"
+    }
+  ],
+  "commands": [
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/moe.toml --dtype=bf16 --steps=9536",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/super.toml --dtype=bf16 --steps=12000",
+    "torchrun --nproc_per_node=8 -m nmoe.train configs/speedrun/small_moe_super.toml --dtype=bf16 --steps=12000"
+  ],
+  "notes": [
+    "0002 three-panel slice references miniseries run ms_20260112_084552_d12 from the manifest and the corresponding Super-256 contract.",
+    "Task-bootstrap CORE variance uses task-level centered scores from 0004_miniseries_ms_20260112_084552_core_summaries.json.",
+    "The Super-4096 collapse figure in this receipt is a separate stress-test surface from configs/speedrun/small_moe_super.toml.",
+    "Lockstep failure handling is documented with the current fail-loud runtime guard in nmoe.eval.core.runner."
+  ]
+}

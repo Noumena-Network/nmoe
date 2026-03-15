@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420" role="img">
+<style>.t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}.m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}.muted{fill:#7c7c7c}.axis{stroke:#6b6b6b;stroke-width:1}.grid{stroke:#b8b1aa;stroke-width:1;opacity:.35}.dotted{stroke-dasharray:4 4}</style>
+<text x="320" y="24" font-size="18" text-anchor="middle" class="t">Expert GEMM MFU rises sharply with batch/expert</text>
+<text x="320" y="46" font-size="13" text-anchor="middle" class="t muted">(B200 BF16, single GEMM upper bound)</text>
+<line x1="64.0" y1="70" x2="64.0" y2="366" class="grid" />
+<text x="64.0" y="388" font-size="12" text-anchor="middle" class="t muted">384</text>
+<line x1="273.2" y1="70" x2="273.2" y2="366" class="grid" />
+<text x="273.2" y="388" font-size="12" text-anchor="middle" class="t muted">3,072</text>
+<line x1="482.5" y1="70" x2="482.5" y2="366" class="grid" />
+<text x="482.5" y="388" font-size="12" text-anchor="middle" class="t muted">24,576</text>
+<line x1="622.0" y1="70" x2="622.0" y2="366" class="grid" />
+<text x="622.0" y="388" font-size="12" text-anchor="middle" class="t muted">98,304</text>
+<line x1="64" y1="366.0" x2="622" y2="366.0" class="axis" />
+<text x="54" y="370.0" font-size="12" text-anchor="end" class="t muted">0%</text>
+<line x1="64" y1="316.7" x2="622" y2="316.7" class="grid" />
+<text x="54" y="320.7" font-size="12" text-anchor="end" class="t muted">10%</text>
+<line x1="64" y1="267.3" x2="622" y2="267.3" class="grid" />
+<text x="54" y="271.3" font-size="12" text-anchor="end" class="t muted">20%</text>
+<line x1="64" y1="218.0" x2="622" y2="218.0" class="grid" />
+<text x="54" y="222.0" font-size="12" text-anchor="end" class="t muted">30%</text>
+<line x1="64" y1="168.7" x2="622" y2="168.7" class="grid" />
+<text x="54" y="172.7" font-size="12" text-anchor="end" class="t muted">40%</text>
+<line x1="64" y1="119.3" x2="622" y2="119.3" class="grid" />
+<text x="54" y="123.3" font-size="12" text-anchor="end" class="t muted">50%</text>
+<line x1="64" y1="70.0" x2="622" y2="70.0" class="axis" />
+<text x="54" y="74.0" font-size="12" text-anchor="end" class="t muted">60%</text>
+<line x1="64" y1="366" x2="622" y2="366" class="axis" />
+<line x1="64" y1="366" x2="64" y2="70" class="axis" />
+<path d="M 64.0 330.5 L 273.2 161.3 L 482.5 94.2 L 552.2 87.3 L 622.0 84.8" stroke="#FF9101" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<circle cx="64.0" cy="330.5" r="4.2" fill="#FF9101" />
+<text x="80.0" y="345.0" font-size="12" text-anchor="start" class="t">7.2%</text>
+<circle cx="273.2" cy="161.3" r="4.2" fill="#FF9101" />
+<text x="273.2" y="151.3" font-size="12" text-anchor="middle" class="t">41.5%</text>
+<circle cx="482.5" cy="94.2" r="4.2" fill="#FF9101" />
+<text x="482.5" y="84.2" font-size="12" text-anchor="middle" class="t">55.1%</text>
+<circle cx="552.2" cy="87.3" r="4.2" fill="#FF9101" />
+<text x="552.2" y="77.3" font-size="12" text-anchor="middle" class="t">56.5%</text>
+<circle cx="622.0" cy="84.8" r="4.2" fill="#FF9101" />
+<text x="622.0" y="74.8" font-size="12" text-anchor="middle" class="t">57.0%</text>
+<text x="343.0" y="406" font-size="13" text-anchor="middle" class="t">Batch per expert (tokens, log scale)</text>
+<text x="18" y="218.0" font-size="13" text-anchor="middle" class="t" transform="rotate(-90 18 218.0)">MFU (%)</text>
+</svg>

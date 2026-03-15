@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="720" viewBox="0 0 640 720" role="img">
+<style>.t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}.m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}.muted{fill:#7c7c7c}.axis{stroke:#6b6b6b;stroke-width:1}.grid{stroke:#b8b1aa;stroke-width:1;opacity:.35}.dotted{stroke-dasharray:4 4}</style>
+<text x="320" y="24" font-size="18" text-anchor="middle" class="t">Miniseries: smooth metric + capability overlay + router health</text>
+<text x="320" y="46" font-size="13" text-anchor="middle" class="t muted">(d=10 vs d=12; checkpoints at 2/5/10/20% of horizon)</text>
+<text x="64" y="76" font-size="13" text-anchor="start" class="t muted">valid/bpb (lower is better)</text>
+<line x1="64.0" y1="86" x2="64.0" y2="256" class="grid" />
+<text x="64.0" y="274" font-size="12" text-anchor="middle" class="t muted">0%</text>
+<line x1="119.8" y1="86" x2="119.8" y2="256" class="grid" />
+<text x="119.8" y="274" font-size="12" text-anchor="middle" class="t muted">2%</text>
+<line x1="203.5" y1="86" x2="203.5" y2="256" class="grid" />
+<text x="203.5" y="274" font-size="12" text-anchor="middle" class="t muted">5%</text>
+<line x1="343.0" y1="86" x2="343.0" y2="256" class="grid" />
+<text x="343.0" y="274" font-size="12" text-anchor="middle" class="t muted">10%</text>
+<line x1="622.0" y1="86" x2="622.0" y2="256" class="grid" />
+<text x="622.0" y="274" font-size="12" text-anchor="middle" class="t muted">20%</text>
+<line x1="64" y1="266.1" x2="622" y2="266.1" class="grid" />
+<text x="54" y="270.1" font-size="12" text-anchor="end" class="t muted">1.1</text>
+<line x1="64" y1="248.4" x2="622" y2="248.4" class="grid" />
+<text x="54" y="252.4" font-size="12" text-anchor="end" class="t muted">1.2</text>
+<line x1="64" y1="230.7" x2="622" y2="230.7" class="grid" />
+<text x="54" y="234.7" font-size="12" text-anchor="end" class="t muted">1.3</text>
+<line x1="64" y1="213.0" x2="622" y2="213.0" class="grid" />
+<text x="54" y="217.0" font-size="12" text-anchor="end" class="t muted">1.4</text>
+<line x1="64" y1="195.3" x2="622" y2="195.3" class="grid" />
+<text x="54" y="199.3" font-size="12" text-anchor="end" class="t muted">1.5</text>
+<line x1="64" y1="177.7" x2="622" y2="177.7" class="grid" />
+<text x="54" y="181.7" font-size="12" text-anchor="end" class="t muted">1.6</text>
+<line x1="64" y1="160.0" x2="622" y2="160.0" class="grid" />
+<text x="54" y="164.0" font-size="12" text-anchor="end" class="t muted">1.7</text>
+<line x1="64" y1="142.3" x2="622" y2="142.3" class="grid" />
+<text x="54" y="146.3" font-size="12" text-anchor="end" class="t muted">1.8</text>
+<line x1="64" y1="124.6" x2="622" y2="124.6" class="grid" />
+<text x="54" y="128.6" font-size="12" text-anchor="end" class="t muted">1.9</text>
+<line x1="64" y1="106.9" x2="622" y2="106.9" class="grid" />
+<text x="54" y="110.9" font-size="12" text-anchor="end" class="t muted">2.0</text>
+<line x1="64" y1="89.2" x2="622" y2="89.2" class="grid" />
+<text x="54" y="93.2" font-size="12" text-anchor="end" class="t muted">2.1</text>
+<line x1="64" y1="71.5" x2="622" y2="71.5" class="grid" />
+<text x="54" y="75.5" font-size="12" text-anchor="end" class="t muted">2.2</text>
+<line x1="64" y1="256" x2="622" y2="256" class="axis" />
+<line x1="64" y1="256" x2="64" y2="86" class="axis" />
+<path d="M 119.8 94.8 L 203.5 150.6 L 343.0 188.3 L 622.0 212.8" stroke="#c4b7ad" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<path d="M 119.8 181.6 L 203.5 215.0 L 343.0 228.8 L 622.0 247.2" stroke="#FF9101" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<text x="64" y="316" font-size="13" text-anchor="start" class="t muted">CORE (centered; higher is better)</text>
+<line x1="64.0" y1="326" x2="64.0" y2="496" class="grid" />
+<text x="64.0" y="514" font-size="12" text-anchor="middle" class="t muted">0%</text>
+<line x1="119.8" y1="326" x2="119.8" y2="496" class="grid" />
+<text x="119.8" y="514" font-size="12" text-anchor="middle" class="t muted">2%</text>
+<line x1="203.5" y1="326" x2="203.5" y2="496" class="grid" />
+<text x="203.5" y="514" font-size="12" text-anchor="middle" class="t muted">5%</text>
+<line x1="343.0" y1="326" x2="343.0" y2="496" class="grid" />
+<text x="343.0" y="514" font-size="12" text-anchor="middle" class="t muted">10%</text>
+<line x1="622.0" y1="326" x2="622.0" y2="496" class="grid" />
+<text x="622.0" y="514" font-size="12" text-anchor="middle" class="t muted">20%</text>
+<line x1="64" y1="503.1" x2="622" y2="503.1" class="grid" />
+<text x="54" y="507.1" font-size="12" text-anchor="end" class="t muted">-0.04</text>
+<line x1="64" y1="472.3" x2="622" y2="472.3" class="grid" />
+<text x="54" y="476.3" font-size="12" text-anchor="end" class="t muted">-0.02</text>
+<line x1="64" y1="441.5" x2="622" y2="441.5" class="grid" />
+<text x="54" y="445.5" font-size="12" text-anchor="end" class="t muted">+0.00</text>
+<line x1="64" y1="410.6" x2="622" y2="410.6" class="grid" />
+<text x="54" y="414.6" font-size="12" text-anchor="end" class="t muted">+0.02</text>
+<line x1="64" y1="379.8" x2="622" y2="379.8" class="grid" />
+<text x="54" y="383.8" font-size="12" text-anchor="end" class="t muted">+0.04</text>
+<line x1="64" y1="349.0" x2="622" y2="349.0" class="grid" />
+<text x="54" y="353.0" font-size="12" text-anchor="end" class="t muted">+0.06</text>
+<line x1="64" y1="318.1" x2="622" y2="318.1" class="grid" />
+<text x="54" y="322.1" font-size="12" text-anchor="end" class="t muted">+0.08</text>
+<line x1="64" y1="496" x2="622" y2="496" class="axis" />
+<line x1="64" y1="496" x2="64" y2="326" class="axis" />
+<path d="M 119.8 480.6 L 203.5 460.4 L 343.0 448.0 L 622.0 440.4" stroke="#c4b7ad" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<path d="M 119.8 462.7 L 203.5 435.4 L 343.0 404.9 L 622.0 341.4" stroke="#FF9101" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<text x="64" y="556" font-size="13" text-anchor="start" class="t muted">router mean CV (lower is better)</text>
+<line x1="64.0" y1="566" x2="64.0" y2="736" class="grid" />
+<text x="64.0" y="754" font-size="12" text-anchor="middle" class="t muted">0%</text>
+<line x1="119.8" y1="566" x2="119.8" y2="736" class="grid" />
+<text x="119.8" y="754" font-size="12" text-anchor="middle" class="t muted">2%</text>
+<line x1="203.5" y1="566" x2="203.5" y2="736" class="grid" />
+<text x="203.5" y="754" font-size="12" text-anchor="middle" class="t muted">5%</text>
+<line x1="343.0" y1="566" x2="343.0" y2="736" class="grid" />
+<text x="343.0" y="754" font-size="12" text-anchor="middle" class="t muted">10%</text>
+<line x1="622.0" y1="566" x2="622.0" y2="736" class="grid" />
+<text x="622.0" y="754" font-size="12" text-anchor="middle" class="t muted">20%</text>
+<line x1="64" y1="764.1" x2="622" y2="764.1" class="grid" />
+<text x="54" y="768.1" font-size="12" text-anchor="end" class="t muted">100%</text>
+<line x1="64" y1="728.2" x2="622" y2="728.2" class="grid" />
+<text x="54" y="732.2" font-size="12" text-anchor="end" class="t muted">150%</text>
+<line x1="64" y1="692.3" x2="622" y2="692.3" class="grid" />
+<text x="54" y="696.3" font-size="12" text-anchor="end" class="t muted">200%</text>
+<line x1="64" y1="656.4" x2="622" y2="656.4" class="grid" />
+<text x="54" y="660.4" font-size="12" text-anchor="end" class="t muted">250%</text>
+<line x1="64" y1="620.5" x2="622" y2="620.5" class="grid" />
+<text x="54" y="624.5" font-size="12" text-anchor="end" class="t muted">300%</text>
+<line x1="64" y1="584.6" x2="622" y2="584.6" class="grid" />
+<text x="54" y="588.6" font-size="12" text-anchor="end" class="t muted">350%</text>
+<line x1="64" y1="548.7" x2="622" y2="548.7" class="grid" />
+<text x="54" y="552.7" font-size="12" text-anchor="end" class="t muted">400%</text>
+<line x1="64" y1="736" x2="622" y2="736" class="axis" />
+<line x1="64" y1="736" x2="64" y2="566" class="axis" />
+<path d="M 119.8 714.9 L 203.5 718.6 L 343.0 722.3 L 622.0 728.8" stroke="#c4b7ad" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<path d="M 119.8 608.8 L 203.5 573.2 L 343.0 606.1 L 622.0 676.4" stroke="#FF9101" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<rect x="64" y="690" width="12" height="12" fill="#c4b7ad" />
+<text x="80" y="700" font-size="12" text-anchor="start" class="t muted">d=10</text>
+<rect x="134" y="690" width="12" height="12" fill="#FF9101" />
+<text x="150" y="700" font-size="12" text-anchor="start" class="t muted">d=12</text>
+<text x="343.0" y="708" font-size="13" text-anchor="middle" class="t">Fraction of horizon (%)</text>
+</svg>

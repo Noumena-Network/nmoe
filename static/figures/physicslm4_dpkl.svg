@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="340" viewBox="0 0 760 340" role="img" aria-label="PhysicsLM4-faithful structured suite: DP-KL (lower is better) by variant.">
+<style>
+  .t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}
+  .m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}
+  .muted{fill:#7c7c7c}
+  .axis{stroke:#b8b1aa;stroke-width:1.2}
+  .grid{stroke:#e6e0d9;stroke-width:1}
+  .bar{fill:#dae0e9;stroke:none}
+  .accent{fill:#FF9101;stroke:none}
+</style>
+
+<text x="380" y="26" font-size="17" text-anchor="middle" class="t">PhysicsLM4-faithful structured suite</text>
+<text x="380" y="46" font-size="13" text-anchor="middle" class="t muted">DP-KL (↓ better) to DP next-token distribution on lano_cfg</text>
+
+<!-- chart frame -->
+<line x1="70" y1="280" x2="730" y2="280" class="axis"/>
+<line x1="70" y1="90" x2="70" y2="280" class="axis"/>
+
+<!-- y grid (0.0, 0.1, 0.2) -->
+<line x1="70" y1="280" x2="730" y2="280" class="grid"/>
+<line x1="70" y1="185" x2="730" y2="185" class="grid"/>
+<line x1="70" y1="90" x2="730" y2="90" class="grid"/>
+<text x="58" y="284" font-size="11" text-anchor="end" class="m muted">0.0</text>
+<text x="58" y="189" font-size="11" text-anchor="end" class="m muted">0.1</text>
+<text x="58" y="94" font-size="11" text-anchor="end" class="m muted">0.2</text>
+
+<!-- Bars (max=0.20 mapped to 180px) -->
+<!-- baseline: 0.196 -->
+<rect x="92" y="103.6" width="86" height="176.4" rx="6" class="bar"/>
+<text x="135" y="98" font-size="11" text-anchor="middle" class="m">0.196</text>
+<text x="135" y="305" font-size="12" text-anchor="middle" class="t">baseline</text>
+
+<!-- engram: 0.197 -->
+<rect x="202" y="102.7" width="86" height="177.3" rx="6" class="bar"/>
+<text x="245" y="98" font-size="11" text-anchor="middle" class="m">0.197</text>
+<text x="245" y="305" font-size="12" text-anchor="middle" class="t">engram</text>
+
+<!-- mhc: 0.163 -->
+<rect x="312" y="133.3" width="86" height="146.7" rx="6" class="bar"/>
+<text x="355" y="128" font-size="11" text-anchor="middle" class="m">0.163</text>
+<text x="355" y="305" font-size="12" text-anchor="middle" class="t">mhc</text>
+
+<!-- canon: 0.040 -->
+<rect x="422" y="244.0" width="86" height="36.0" rx="6" class="accent"/>
+<text x="465" y="239" font-size="11" text-anchor="middle" class="m">0.040</text>
+<text x="465" y="305" font-size="12" text-anchor="middle" class="t">canon</text>
+
+<!-- mhc+canon: 0.045 -->
+<rect x="532" y="239.5" width="86" height="40.5" rx="6" class="bar"/>
+<text x="575" y="234" font-size="11" text-anchor="middle" class="m">0.045</text>
+<text x="575" y="305" font-size="12" text-anchor="middle" class="t">mhc+canon</text>
+
+<!-- mhc+canon+engram: 0.042 -->
+<rect x="642" y="242.2" width="86" height="37.8" rx="6" class="bar"/>
+<text x="685" y="237" font-size="11" text-anchor="middle" class="m">0.042</text>
+<text x="685" y="305" font-size="12" text-anchor="middle" class="t">mhc+canon+engram</text>
+
+<text x="70" y="325" font-size="11" text-anchor="start" class="t muted">Note: numbers are mean DP-KL over 3 seeds (see post table for full suite metrics).</text>
+</svg>

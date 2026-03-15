@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="560" viewBox="0 0 920 560" role="img" aria-labelledby="title desc">
+<title id="title">Moonlet bf16 expert learning-rate sweep</title>
+<desc id="desc">Two-seed Moonlet bf16 sweep over expert learning-rate multipliers from 0.5x to 15x, showing 1x as the best baseline and 15x as a strong overcorrection.</desc>
+<style>
+  .t{font-family:GT America,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;fill:#494949}
+  .m{font-family:JetBrains Mono,ui-monospace,Menlo,Consolas,monospace;fill:#494949}
+  .muted{fill:#7c7c7c}
+  .grid { stroke: #b8b1aa; stroke-width: 1; opacity: .35; }
+  .axis { stroke: #6b6b6b; stroke-width: 1; }
+  .seed42 { stroke: #2a6fbb; fill: none; stroke-width: 3; }
+  .seed43 { stroke: #c76a1d; fill: none; stroke-width: 3; }
+  .hl { fill: #eaf4ea; stroke: #c8dcc8; stroke-width: 1; }
+</style>
+<text x="460" y="30" font-size="18" text-anchor="middle" class="t">Moonlet bf16 sweep: 1x is the baseline, 15x is the mistake</text>
+<text x="460" y="52" font-size="13" text-anchor="middle" class="t muted">Triangles mark collapsed runs. Circles mark completed 200-step windows. Small labels are stop steps.</text>
+<rect class="hl" x="238" y="110" width="104" height="320" rx="12" />
+<line class="grid" x1="90" y1="411.7" x2="810" y2="411.7" />
+<text class="m muted" x="76" y="415.7" font-size="12" text-anchor="end">8.5</text>
+<line class="grid" x1="90" y1="366.0" x2="810" y2="366.0" />
+<text class="m muted" x="76" y="370.0" font-size="12" text-anchor="end">9.0</text>
+<line class="grid" x1="90" y1="320.3" x2="810" y2="320.3" />
+<text class="m muted" x="76" y="324.3" font-size="12" text-anchor="end">9.5</text>
+<line class="grid" x1="90" y1="274.6" x2="810" y2="274.6" />
+<text class="m muted" x="76" y="278.6" font-size="12" text-anchor="end">10.0</text>
+<line class="grid" x1="90" y1="228.9" x2="810" y2="228.9" />
+<text class="m muted" x="76" y="232.9" font-size="12" text-anchor="end">10.5</text>
+<line class="grid" x1="90" y1="183.1" x2="810" y2="183.1" />
+<text class="m muted" x="76" y="187.1" font-size="12" text-anchor="end">11.0</text>
+<line class="grid" x1="90" y1="137.4" x2="810" y2="137.4" />
+<text class="m muted" x="76" y="141.4" font-size="12" text-anchor="end">11.5</text>
+<line class="axis" x1="90" y1="430" x2="810" y2="430" />
+<line class="axis" x1="90" y1="110" x2="90" y2="430" />
+<polyline class="seed42" points="150,414.7 290,415.1 430,334.3 570,302.4 710,204.6" />
+<polyline class="seed43" points="150,359.7 290,389.0 430,405.1 570,328.9 710,132.1" />
+<text class="t" x="150" y="456" font-size="14" text-anchor="middle">0.5x</text>
+<text class="t" x="290" y="456" font-size="14" text-anchor="middle">1x</text>
+<text class="t" x="430" y="456" font-size="14" text-anchor="middle">2x</text>
+<text class="t" x="570" y="456" font-size="14" text-anchor="middle">4x</text>
+<text class="t" x="710" y="456" font-size="14" text-anchor="middle">15x</text>
+<text class="t muted" x="450" y="490" font-size="13" text-anchor="middle">expert LR multiplier relative to dense LR</text>
+<text class="t muted" x="28" y="270" font-size="13" transform="rotate(-90 28 270)" text-anchor="middle">final loss at stop step</text>
+<polygon points="150,407.7 143,420.7 157,420.7" fill="#2a6fbb" stroke="#ffffff" stroke-width="2" />
+<text class="m muted" x="140" y="404.7" font-size="10" text-anchor="end">110</text>
+<polygon points="290,408.1 283,421.1 297,421.1" fill="#2a6fbb" stroke="#ffffff" stroke-width="2" />
+<text class="m muted" x="280" y="405.1" font-size="10" text-anchor="end">200</text>
+<circle cx="430" cy="334.3" r="6.5" fill="#2a6fbb" stroke="#ffffff" stroke-width="2" />
+<text class="m muted" x="420" y="324.3" font-size="10" text-anchor="end">200</text>
+<circle cx="570" cy="302.4" r="6.5" fill="#2a6fbb" stroke="#ffffff" stroke-width="2" />
+<text class="m muted" x="560" y="292.4" font-size="10" text-anchor="end">200</text>
+<circle cx="710" cy="204.6" r="6.5" fill="#2a6fbb" stroke="#ffffff" stroke-width="2" />
+<text class="m muted" x="700" y="194.6" font-size="10" text-anchor="end">200</text>
+<circle cx="150" cy="359.7" r="6.5" fill="#c76a1d" stroke="#ffffff" stroke-width="2" />
+<text class="m muted" x="160" y="349.7" font-size="10" text-anchor="start">200</text>
+<circle cx="290" cy="389.0" r="6.5" fill="#c76a1d" stroke="#ffffff" stroke-width="2" />
+<text class="m muted" x="300" y="379.0" font-size="10" text-anchor="start">200</text>
+<polygon points="430,398.1 423,411.1 437,411.1" fill="#c76a1d" stroke="#ffffff" stroke-width="2" />
+<text class="m muted" x="440" y="395.1" font-size="10" text-anchor="start">80</text>
+<circle cx="570" cy="328.9" r="6.5" fill="#c76a1d" stroke="#ffffff" stroke-width="2" />
+<text class="m muted" x="580" y="318.9" font-size="10" text-anchor="start">200</text>
+<polygon points="710,125.1 703,138.1 717,138.1" fill="#c76a1d" stroke="#ffffff" stroke-width="2" />
+<text class="m muted" x="720" y="122.1" font-size="10" text-anchor="start">110</text>
+<rect x="632" y="108" width="214" height="76" rx="12" fill="#f7f3ef" stroke="#b8b1aa" />
+<line x1="652" y1="132" x2="686" y2="132" class="seed42" /><circle cx="669" cy="132" r="6.5" fill="#2a6fbb" stroke="#fff" stroke-width="2" /><text class="t" x="700" y="137" font-size="13">seed 42</text>
+<line x1="652" y1="156" x2="686" y2="156" class="seed43" /><circle cx="669" cy="156" r="6.5" fill="#c76a1d" stroke="#fff" stroke-width="2" /><text class="t" x="700" y="161" font-size="13">seed 43</text>
+<polygon points="652,176 645,188 659,188" fill="#6b6b6b" /><text class="t" x="700" y="186" font-size="13">collapsed before or at stop</text>
+<text class="t" x="290" y="130" font-size="13" font-weight="700" text-anchor="middle" fill="#2E7D32">best tested baseline</text>
+<text class="t muted" x="48" y="530" font-size="12">Data: fixed-contract Moonlet bf16 sweep, two seeds, multipliers {0.5, 1, 2, 4, 15}.</text>
+</svg>
